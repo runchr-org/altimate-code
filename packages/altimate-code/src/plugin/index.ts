@@ -11,16 +11,17 @@ import { CodexAuthPlugin } from "./codex"
 import { Session } from "../session"
 import { NamedError } from "@altimate/cli-util/error"
 import { CopilotAuthPlugin } from "./copilot"
+import { AnthropicAuthPlugin } from "./anthropic"
 // @ts-ignore - @gitlab/opencode-gitlab-auth exports Plugin from @opencode-ai/plugin, not @altimate/cli-plugin
 import { gitlabAuthPlugin as GitlabAuthPlugin } from "@gitlab/opencode-gitlab-auth"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
 
-  const BUILTIN = ["altimate-code-anthropic-auth@0.0.13"]
+  const BUILTIN: string[] = []
 
   // Built-in plugins that are directly imported (not installed from npm)
-  const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin, GitlabAuthPlugin as unknown as PluginInstance]
+  const INTERNAL_PLUGINS: PluginInstance[] = [AnthropicAuthPlugin, CodexAuthPlugin, CopilotAuthPlugin, GitlabAuthPlugin as unknown as PluginInstance]
 
   const state = Instance.state(async () => {
     const client = createOpencodeClient({
@@ -55,8 +56,14 @@ export namespace Plugin {
     }
 
     for (let plugin of plugins) {
-      // ignore old codex plugin since it is supported first party now
-      if (plugin.includes("altimate-code-openai-codex-auth") || plugin.includes("altimate-code-copilot-auth")) continue
+      // ignore old plugins now supported first party
+      if (
+        plugin.includes("altimate-code-openai-codex-auth") ||
+        plugin.includes("altimate-code-copilot-auth") ||
+        plugin.includes("altimate-code-anthropic-auth") ||
+        plugin.includes("opencode-anthropic-auth")
+      )
+        continue
       log.info("loading plugin", { path: plugin })
       if (!plugin.startsWith("file://")) {
         const lastAtIndex = plugin.lastIndexOf("@")
