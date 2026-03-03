@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-03-03
+
+### Fixed
+
+- Build: resolve @opentui/core parser.worker.js via import.meta.resolve for monorepo hoisting
+- Build: output binary as `altimate-code` instead of `opencode`
+- Publish: update Docker/AUR/Homebrew references from anomalyco/opencode to AltimateAI/altimate-code
+- Publish: make Docker/AUR/Homebrew steps non-fatal
+- Bin wrapper: look for `@altimateai/altimate-code-*` scoped platform packages
+- Postinstall: resolve `@altimateai` scoped platform packages
+- Dockerfile: update binary paths and names
+
 ## [0.1.9] - 2026-03-02
 
 ### Fixed
