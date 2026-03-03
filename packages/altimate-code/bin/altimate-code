@@ -17,7 +17,7 @@ function run(target) {
   process.exit(code)
 }
 
-const envPath = process.env.OPENCODE_BIN_PATH
+const envPath = process.env.ALTIMATE_CODE_BIN_PATH
 if (envPath) {
   run(envPath)
 }
@@ -26,7 +26,7 @@ const scriptPath = fs.realpathSync(__filename)
 const scriptDir = path.dirname(scriptPath)
 
 //
-const cached = path.join(scriptDir, ".opencode")
+const cached = path.join(scriptDir, ".altimate-code")
 if (fs.existsSync(cached)) {
   run(cached)
 }
@@ -50,8 +50,9 @@ let arch = archMap[os.arch()]
 if (!arch) {
   arch = os.arch()
 }
-const base = "opencode-" + platform + "-" + arch
-const binary = platform === "windows" ? "opencode.exe" : "opencode"
+const scope = "@altimateai"
+const base = "altimate-code-" + platform + "-" + arch
+const binary = platform === "windows" ? "altimate-code.exe" : "altimate-code"
 
 function supportsAvx2() {
   if (arch !== "x64") return false
@@ -154,7 +155,7 @@ function findBinary(startDir) {
     const modules = path.join(current, "node_modules")
     if (fs.existsSync(modules)) {
       for (const name of names) {
-        const candidate = path.join(modules, name, "bin", binary)
+        const candidate = path.join(modules, scope, name, "bin", binary)
         if (fs.existsSync(candidate)) return candidate
       }
     }
@@ -169,8 +170,8 @@ function findBinary(startDir) {
 const resolved = findBinary(scriptDir)
 if (!resolved) {
   console.error(
-    "It seems that your package manager failed to install the right version of the opencode CLI for your platform. You can try manually installing " +
-      names.map((n) => `\"${n}\"`).join(" or ") +
+    "It seems that your package manager failed to install the right version of the altimate-code CLI for your platform. You can try manually installing " +
+      names.map((n) => `\"${scope}/${n}\"`).join(" or ") +
       " package",
   )
   process.exit(1)
