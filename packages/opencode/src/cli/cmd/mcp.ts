@@ -684,19 +684,29 @@ export const McpRemoveCommand = cmd({
         const removed = await removeMcpFromConfig(args.name, configPath)
         if (removed) {
           console.log(`MCP server "${args.name}" removed from ${configPath}`)
-        } else {
-          // Try the other scope
-          const otherPath = await resolveConfigPath(
-            useGlobal ? Instance.worktree : Global.Path.config,
-            !useGlobal,
-          )
-          const removedOther = await removeMcpFromConfig(args.name, otherPath)
-          if (removedOther) {
-            console.log(`MCP server "${args.name}" removed from ${otherPath}`)
+        } else if (Instance.project.vcs === "git" && !args.global) {
+          // Try global scope as fallback only when in a git repo
+          const globalPath = await resolveConfigPath(Global.Path.config, true)
+          const removedGlobal = await removeMcpFromConfig(args.name, globalPath)
+          if (removedGlobal) {
+            console.log(`MCP server "${args.name}" removed from ${globalPath}`)
           } else {
             console.error(`MCP server "${args.name}" not found in any config`)
             process.exit(1)
           }
+        } else if (args.global && Instance.project.vcs === "git") {
+          // Try local scope as fallback when --global was explicit and we're in a git repo
+          const localPath = await resolveConfigPath(Instance.worktree, false)
+          const removedLocal = await removeMcpFromConfig(args.name, localPath)
+          if (removedLocal) {
+            console.log(`MCP server "${args.name}" removed from ${localPath}`)
+          } else {
+            console.error(`MCP server "${args.name}" not found in any config`)
+            process.exit(1)
+          }
+        } else {
+          console.error(`MCP server "${args.name}" not found in any config`)
+          process.exit(1)
         }
       },
     })
