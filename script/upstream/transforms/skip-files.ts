@@ -3,8 +3,8 @@ import { git, conflictedFiles } from "../utils/git"
 import { loadConfig } from "../utils/config"
 
 /**
- * For conflicted files matching skipFiles patterns, resolve by removing them.
- * These are upstream packages we don't use (e.g., packages/app/**, packages/desktop/**).
+ * For conflicted files matching skipFiles patterns, resolve by accepting upstream's version.
+ * These are upstream packages we don't modify — we keep them to avoid merge friction.
  */
 export function resolveSkipFiles(): { resolved: string[]; skipped: string[] } {
   const config = loadConfig()
@@ -15,7 +15,9 @@ export function resolveSkipFiles(): { resolved: string[]; skipped: string[] } {
   for (const file of conflicts) {
     const shouldSkip = config.skipFiles.some((pattern) => minimatch(file, pattern))
     if (shouldSkip) {
-      git(`rm --force "${file}"`)
+      // Accept upstream's version — we don't modify these files
+      git(`checkout --theirs "${file}"`)
+      git(`add "${file}"`)
       resolved.push(file)
     } else {
       skipped.push(file)
@@ -23,26 +25,4 @@ export function resolveSkipFiles(): { resolved: string[]; skipped: string[] } {
   }
 
   return { resolved, skipped }
-}
-
-/**
- * After merge, remove any new files from skipped packages that upstream added.
- */
-export function cleanSkippedPackages(): string[] {
-  const config = loadConfig()
-  const cleaned: string[] = []
-
-  for (const pattern of config.skipFiles) {
-    // Only clean directory-level patterns
-    if (!pattern.endsWith("/**")) continue
-    const dir = pattern.replace("/**", "")
-    try {
-      git(`rm -rf "${dir}"`)
-      cleaned.push(dir)
-    } catch {
-      // Directory doesn't exist, skip
-    }
-  }
-
-  return cleaned
 }

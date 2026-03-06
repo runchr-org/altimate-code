@@ -23,7 +23,7 @@ import { parseArgs } from "util"
 import { git, gitSafe, tagExists, currentBranch, hasUncommittedChanges, conflictedFiles } from "./utils/git"
 import { loadConfig, repoRoot } from "./utils/config"
 import { resolveKeepOurs } from "./transforms/keep-ours"
-import { resolveSkipFiles, cleanSkippedPackages } from "./transforms/skip-files"
+import { resolveSkipFiles } from "./transforms/skip-files"
 import { resolveLockFiles, regenerateLockFile } from "./transforms/lock-files"
 
 const { values: args } = parseArgs({
@@ -143,14 +143,6 @@ async function continueAfterManualResolution() {
 }
 
 async function postMerge(config: ReturnType<typeof loadConfig>) {
-  // Clean up skipped packages that might have been added by upstream
-  console.log("\nPost-merge: Cleaning skipped packages...")
-  const cleaned = cleanSkippedPackages()
-  if (cleaned.length > 0) {
-    console.log(`  Removed ${cleaned.length} skipped directories`)
-    git('commit -m "chore: remove unused upstream packages after merge"')
-  }
-
   // Regenerate lock file
   console.log("\nPost-merge: Regenerating lock file...")
   regenerateLockFile()
