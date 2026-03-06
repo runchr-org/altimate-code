@@ -53,7 +53,9 @@ process.on("SIGHUP", () => process.exit())
 
 let cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  // altimate_change start - script name
+  .scriptName("altimate-code")
+  // altimate_change end
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -83,12 +85,16 @@ let cli = yargs(hideBin(process.argv))
     process.env.OPENCODE = "1"
     process.env.OPENCODE_PID = String(process.pid)
 
-    Log.Default.info("opencode", {
+    // altimate_change start - app name in logs
+    Log.Default.info("altimate-code", {
+    // altimate_change end
       version: Installation.VERSION,
       args: process.argv.slice(2),
     })
 
-    const marker = path.join(Global.Path.data, "opencode.db")
+    // altimate_change start - db marker name
+    const marker = path.join(Global.Path.data, "altimate-code.db")
+    // altimate_change end
     if (!(await Filesystem.exists(marker))) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)

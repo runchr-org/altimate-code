@@ -191,7 +191,9 @@ export namespace Installation {
 
   export const VERSION = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "local"
   export const CHANNEL = typeof OPENCODE_CHANNEL === "string" ? OPENCODE_CHANNEL : "local"
-  export const USER_AGENT = `opencode/${CHANNEL}/${VERSION}/${Flag.OPENCODE_CLIENT}`
+  // altimate_change start - user agent string
+  export const USER_AGENT = `altimate-code/${CHANNEL}/${VERSION}/${Flag.OPENCODE_CLIENT}`
+  // altimate_change end
 
   export async function latest(installMethod?: Method) {
     const detectedMethod = installMethod || (await method())

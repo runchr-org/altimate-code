@@ -1,0 +1,111 @@
+site_name: altimate-code
+site_description: The data engineering agent for dbt, SQL, and cloud warehouses
+site_url: https://altimateai.github.io/altimate-code
+repo_url: https://github.com/AltimateAI/altimate-code
+repo_name: AltimateAI/altimate-code
+
+copyright: "&copy; 2026 Altimate Inc. All rights reserved."
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/images/favicon.png
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - assets/css/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Data Engineering:
+      - Agent Modes: data-engineering/agent-modes.md
+      - Tools:
+          - Overview: data-engineering/tools/index.md
+          - SQL Tools: data-engineering/tools/sql-tools.md
+          - Schema Tools: data-engineering/tools/schema-tools.md
+          - FinOps Tools: data-engineering/tools/finops-tools.md
+          - Lineage Tools: data-engineering/tools/lineage-tools.md
+          - dbt Tools: data-engineering/tools/dbt-tools.md
+          - Warehouse Tools: data-engineering/tools/warehouse-tools.md
+      - Guides:
+          - Overview: data-engineering/guides/index.md
+          - Cost Optimization: data-engineering/guides/cost-optimization.md
+          - Migration: data-engineering/guides/migration.md
+          - Using with Claude Code: data-engineering/guides/using-with-claude-code.md
+          - Using with Codex: data-engineering/guides/using-with-codex.md
+  - Usage:
+      - TUI: usage/tui.md
+      - CLI: usage/cli.md
+      - Web: usage/web.md
+      - IDE: usage/ide.md
+      - GitHub: usage/github.md
+      - GitLab: usage/gitlab.md
+  - Configure:
+      - Overview: configure/config.md
+      - Providers & Models:
+          - Providers: configure/providers.md
+          - Models: configure/models.md
+      - Agents & Tools:
+          - Agents: configure/agents.md
+          - Tools: configure/tools.md
+          - Agent Skills: configure/skills.md
+          - Custom Tools: configure/custom-tools.md
+          - Commands: configure/commands.md
+      - Behavior:
+          - Rules: configure/rules.md
+          - Permissions: configure/permissions.md
+          - Context Management: configure/context-management.md
+          - Formatters: configure/formatters.md
+      - Appearance:
+          - Themes: configure/themes.md
+          - Keybinds: configure/keybinds.md
+      - Integrations:
+          - LSP Servers: configure/lsp.md
+          - MCP Servers: configure/mcp-servers.md
+          - ACP Support: configure/acp.md
+  - Develop:
+      - SDK: develop/sdk.md
+      - Server: develop/server.md
+      - Plugins: develop/plugins.md
+      - Ecosystem: develop/ecosystem.md
+  - Reference:
+      - Network: network.md
+      - Troubleshooting: troubleshooting.md
+      - Windows / WSL: windows-wsl.md

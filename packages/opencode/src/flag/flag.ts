@@ -8,7 +8,20 @@ function falsy(key: string) {
   return value === "false" || value === "0"
 }
 
+// altimate_change start - dual env var support: ALTIMATE_CLI_* (primary) + OPENCODE_* (fallback)
+function altTruthy(altKey: string, openKey: string) {
+  return truthy(altKey) || truthy(openKey)
+}
+
+function altEnv(altKey: string, openKey: string) {
+  return process.env[altKey] ?? process.env[openKey]
+}
+// altimate_change end
+
 export namespace Flag {
+  // altimate_change start - ALTIMATE_CLI_CLIENT flag with OPENCODE_CLIENT fallback
+  export declare const ALTIMATE_CLI_CLIENT: string
+  // altimate_change end
   export const OPENCODE_AUTO_SHARE = truthy("OPENCODE_AUTO_SHARE")
   export const OPENCODE_GIT_BASH_PATH = process.env["OPENCODE_GIT_BASH_PATH"]
   export const OPENCODE_CONFIG = process.env["OPENCODE_CONFIG"]
@@ -112,3 +125,13 @@ Object.defineProperty(Flag, "OPENCODE_CLIENT", {
   enumerable: true,
   configurable: false,
 })
+
+// altimate_change start - ALTIMATE_CLI_CLIENT with OPENCODE_CLIENT fallback
+Object.defineProperty(Flag, "ALTIMATE_CLI_CLIENT", {
+  get() {
+    return process.env["ALTIMATE_CLI_CLIENT"] ?? process.env["OPENCODE_CLIENT"] ?? "cli"
+  },
+  enumerable: true,
+  configurable: false,
+})
+// altimate_change end

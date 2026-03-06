@@ -13,6 +13,13 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+// altimate_change start - import custom agent mode prompts
+import PROMPT_BUILDER from "../altimate/prompts/builder.txt"
+import PROMPT_ANALYST from "../altimate/prompts/analyst.txt"
+import PROMPT_VALIDATOR from "../altimate/prompts/validator.txt"
+import PROMPT_MIGRATOR from "../altimate/prompts/migrator.txt"
+import PROMPT_EXECUTIVE from "../altimate/prompts/executive.txt"
+// altimate_change end
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -74,9 +81,11 @@ export namespace Agent {
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
     const result: Record<string, Info> = {
-      build: {
-        name: "build",
-        description: "The default agent. Executes tools based on configured permissions.",
+      // altimate_change start - replace default build agent with builder and add custom modes
+      builder: {
+        name: "builder",
+        description: "Create and modify dbt models, SQL, and data pipelines. Full read/write access.",
+        prompt: PROMPT_BUILDER,
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -89,6 +98,130 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
+      analyst: {
+        name: "analyst",
+        description: "Read-only data exploration. Cannot modify files or run destructive SQL.",
+        prompt: PROMPT_ANALYST,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            sql_execute: "allow", sql_validate: "allow", sql_analyze: "allow",
+            sql_translate: "allow", sql_optimize: "allow", lineage_check: "allow",
+            warehouse_list: "allow", warehouse_test: "allow", warehouse_discover: "allow",
+            schema_inspect: "allow", schema_index: "allow", schema_search: "allow",
+            schema_cache_status: "allow", sql_explain: "allow", sql_format: "allow",
+            sql_fix: "allow", sql_autocomplete: "allow", sql_diff: "allow",
+            finops_query_history: "allow", finops_analyze_credits: "allow",
+            finops_expensive_queries: "allow", finops_warehouse_advice: "allow",
+            finops_unused_resources: "allow", finops_role_grants: "allow",
+            finops_role_hierarchy: "allow", finops_user_roles: "allow",
+            schema_detect_pii: "allow", schema_tags: "allow", schema_tags_list: "allow",
+            altimate_core_validate: "allow", altimate_core_lint: "allow",
+            altimate_core_safety: "allow", altimate_core_transpile: "allow",
+            altimate_core_check: "allow",
+            read: "allow", grep: "allow", glob: "allow",
+            question: "allow", webfetch: "allow", websearch: "allow",
+          }),
+          user,
+        ),
+        mode: "primary",
+        native: true,
+      },
+      executive: {
+        name: "executive",
+        description: "Read-only data exploration with output calibrated for non-technical executives. No SQL or jargon — findings expressed as business impact.",
+        prompt: PROMPT_EXECUTIVE,
+        options: { audience: "executive" },
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            sql_execute: "allow", sql_validate: "allow", sql_analyze: "allow",
+            sql_translate: "allow", sql_optimize: "allow", lineage_check: "allow",
+            warehouse_list: "allow", warehouse_test: "allow", warehouse_discover: "allow",
+            schema_inspect: "allow", schema_index: "allow", schema_search: "allow",
+            schema_cache_status: "allow", sql_explain: "allow", sql_format: "allow",
+            sql_fix: "allow", sql_autocomplete: "allow", sql_diff: "allow",
+            finops_query_history: "allow", finops_analyze_credits: "allow",
+            finops_expensive_queries: "allow", finops_warehouse_advice: "allow",
+            finops_unused_resources: "allow", finops_role_grants: "allow",
+            finops_role_hierarchy: "allow", finops_user_roles: "allow",
+            schema_detect_pii: "allow", schema_tags: "allow", schema_tags_list: "allow",
+            altimate_core_validate: "allow", altimate_core_lint: "allow",
+            altimate_core_safety: "allow", altimate_core_transpile: "allow",
+            altimate_core_check: "allow",
+            read: "allow", grep: "allow", glob: "allow",
+            question: "allow", webfetch: "allow", websearch: "allow",
+          }),
+          user,
+        ),
+        mode: "primary",
+        native: true,
+      },
+      validator: {
+        name: "validator",
+        description: "Test, lint, and verify data integrity. Cannot modify files.",
+        prompt: PROMPT_VALIDATOR,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            sql_validate: "allow", sql_execute: "allow", sql_analyze: "allow",
+            sql_translate: "allow", sql_optimize: "allow", lineage_check: "allow",
+            warehouse_list: "allow", warehouse_test: "allow", warehouse_discover: "allow",
+            schema_inspect: "allow", schema_index: "allow", schema_search: "allow",
+            schema_cache_status: "allow", sql_explain: "allow", sql_format: "allow",
+            sql_fix: "allow", sql_autocomplete: "allow", sql_diff: "allow",
+            finops_query_history: "allow", finops_analyze_credits: "allow",
+            finops_expensive_queries: "allow", finops_warehouse_advice: "allow",
+            finops_unused_resources: "allow", finops_role_grants: "allow",
+            finops_role_hierarchy: "allow", finops_user_roles: "allow",
+            schema_detect_pii: "allow", schema_tags: "allow", schema_tags_list: "allow",
+            altimate_core_validate: "allow", altimate_core_lint: "allow",
+            altimate_core_safety: "allow", altimate_core_transpile: "allow",
+            altimate_core_check: "allow",
+            read: "allow", grep: "allow", glob: "allow", bash: "allow",
+            question: "allow",
+          }),
+          user,
+        ),
+        mode: "primary",
+        native: true,
+      },
+      migrator: {
+        name: "migrator",
+        description: "Cross-warehouse SQL migration and dialect conversion.",
+        prompt: PROMPT_MIGRATOR,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            sql_execute: "allow", sql_validate: "allow", sql_translate: "allow",
+            sql_optimize: "allow", lineage_check: "allow",
+            warehouse_list: "allow", warehouse_test: "allow",
+            schema_inspect: "allow", schema_index: "allow", schema_search: "allow",
+            schema_cache_status: "allow", sql_explain: "allow", sql_format: "allow",
+            sql_fix: "allow", sql_autocomplete: "allow", sql_diff: "allow",
+            finops_query_history: "allow", finops_analyze_credits: "allow",
+            finops_expensive_queries: "allow", finops_warehouse_advice: "allow",
+            finops_unused_resources: "allow", finops_role_grants: "allow",
+            finops_role_hierarchy: "allow", finops_user_roles: "allow",
+            schema_detect_pii: "allow", schema_tags: "allow", schema_tags_list: "allow",
+            altimate_core_validate: "allow", altimate_core_lint: "allow",
+            altimate_core_safety: "allow", altimate_core_transpile: "allow",
+            altimate_core_check: "allow",
+            read: "allow", write: "allow", edit: "allow",
+            grep: "allow", glob: "allow", question: "allow",
+          }),
+          user,
+        ),
+        mode: "primary",
+        native: true,
+      },
+      // altimate_change end
       plan: {
         name: "plan",
         description: "Plan mode. Disallows all edit tools.",
@@ -259,7 +392,9 @@ export namespace Agent {
     return pipe(
       await state(),
       values(),
-      sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"]),
+      // altimate_change start - default agent is "builder" not "build"
+      sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "builder"), "desc"]),
+      // altimate_change end
     )
   }
 

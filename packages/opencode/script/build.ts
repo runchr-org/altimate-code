@@ -179,8 +179,10 @@ for (const item of targets) {
       autoloadTsconfig: true,
       autoloadPackageJson: true,
       target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/opencode`,
-      execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
+      // altimate_change start - binary name
+      outfile: `dist/${name}/bin/altimate-code`,
+      execArgv: [`--user-agent=altimate-code/${Script.version}`, "--use-system-ca", "--"],
+      // altimate_change end
       windows: {},
     },
     entrypoints: ["./src/index.ts", parserWorker, workerPath],

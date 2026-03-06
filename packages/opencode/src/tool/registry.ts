@@ -31,6 +31,76 @@ import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 
+// altimate_change start - import custom data engineering tools
+import { SqlExecuteTool } from "../altimate/tools/sql-execute"
+import { SchemaInspectTool } from "../altimate/tools/schema-inspect"
+import { SqlAnalyzeTool } from "../altimate/tools/sql-analyze"
+import { SqlOptimizeTool } from "../altimate/tools/sql-optimize"
+import { SqlTranslateTool } from "../altimate/tools/sql-translate"
+import { LineageCheckTool } from "../altimate/tools/lineage-check"
+import { WarehouseListTool } from "../altimate/tools/warehouse-list"
+import { WarehouseTestTool } from "../altimate/tools/warehouse-test"
+import { WarehouseAddTool } from "../altimate/tools/warehouse-add"
+import { WarehouseRemoveTool } from "../altimate/tools/warehouse-remove"
+import { WarehouseDiscoverTool } from "../altimate/tools/warehouse-discover"
+import { DbtRunTool } from "../altimate/tools/dbt-run"
+import { DbtManifestTool } from "../altimate/tools/dbt-manifest"
+import { DbtProfilesTool } from "../altimate/tools/dbt-profiles"
+import { DbtLineageTool } from "../altimate/tools/dbt-lineage"
+import { SchemaIndexTool } from "../altimate/tools/schema-index"
+import { SchemaSearchTool } from "../altimate/tools/schema-search"
+import { SchemaCacheStatusTool } from "../altimate/tools/schema-cache-status"
+import { SqlExplainTool } from "../altimate/tools/sql-explain"
+import { SqlFormatTool } from "../altimate/tools/sql-format"
+import { SqlFixTool } from "../altimate/tools/sql-fix"
+import { SqlAutocompleteTool } from "../altimate/tools/sql-autocomplete"
+import { SqlDiffTool } from "../altimate/tools/sql-diff"
+import { FinopsQueryHistoryTool } from "../altimate/tools/finops-query-history"
+import { FinopsAnalyzeCreditsTool } from "../altimate/tools/finops-analyze-credits"
+import { FinopsExpensiveQueriesTool } from "../altimate/tools/finops-expensive-queries"
+import { FinopsWarehouseAdviceTool } from "../altimate/tools/finops-warehouse-advice"
+import { FinopsUnusedResourcesTool } from "../altimate/tools/finops-unused-resources"
+import { FinopsRoleGrantsTool, FinopsRoleHierarchyTool, FinopsUserRolesTool } from "../altimate/tools/finops-role-access"
+import { SchemaDetectPiiTool } from "../altimate/tools/schema-detect-pii"
+import { SchemaTagsTool, SchemaTagsListTool } from "../altimate/tools/schema-tags"
+import { SqlRewriteTool } from "../altimate/tools/sql-rewrite"
+import { SchemaDiffTool } from "../altimate/tools/schema-diff"
+import { AltimateCoreValidateTool } from "../altimate/tools/altimate-core-validate"
+import { AltimateCoreLintTool } from "../altimate/tools/altimate-core-lint"
+import { AltimateCoreSafetyTool } from "../altimate/tools/altimate-core-safety"
+import { AltimateCoreTranspileTool } from "../altimate/tools/altimate-core-transpile"
+import { AltimateCoreCheckTool } from "../altimate/tools/altimate-core-check"
+import { AltimateCoreFixTool } from "../altimate/tools/altimate-core-fix"
+import { AltimateCorePolicyTool } from "../altimate/tools/altimate-core-policy"
+import { AltimateCoreSemanticsTool } from "../altimate/tools/altimate-core-semantics"
+import { AltimateCoreTestgenTool } from "../altimate/tools/altimate-core-testgen"
+import { AltimateCoreEquivalenceTool } from "../altimate/tools/altimate-core-equivalence"
+import { AltimateCoreMigrationTool } from "../altimate/tools/altimate-core-migration"
+import { AltimateCoreSchemaDiffTool } from "../altimate/tools/altimate-core-schema-diff"
+import { AltimateCoreRewriteTool } from "../altimate/tools/altimate-core-rewrite"
+import { AltimateCoreCorrectTool } from "../altimate/tools/altimate-core-correct"
+import { AltimateCoreGradeTool } from "../altimate/tools/altimate-core-grade"
+import { AltimateCoreClassifyPiiTool } from "../altimate/tools/altimate-core-classify-pii"
+import { AltimateCoreQueryPiiTool } from "../altimate/tools/altimate-core-query-pii"
+import { AltimateCoreResolveTermTool } from "../altimate/tools/altimate-core-resolve-term"
+import { AltimateCoreColumnLineageTool } from "../altimate/tools/altimate-core-column-lineage"
+import { AltimateCoreTrackLineageTool } from "../altimate/tools/altimate-core-track-lineage"
+import { AltimateCoreFormatTool } from "../altimate/tools/altimate-core-format"
+import { AltimateCoreExtractMetadataTool } from "../altimate/tools/altimate-core-extract-metadata"
+import { AltimateCoreCompareTool } from "../altimate/tools/altimate-core-compare"
+import { AltimateCoreCompleteTool } from "../altimate/tools/altimate-core-complete"
+import { AltimateCoreOptimizeContextTool } from "../altimate/tools/altimate-core-optimize-context"
+import { AltimateCoreOptimizeForQueryTool } from "../altimate/tools/altimate-core-optimize-for-query"
+import { AltimateCorePruneSchemaTool } from "../altimate/tools/altimate-core-prune-schema"
+import { AltimateCoreImportDdlTool } from "../altimate/tools/altimate-core-import-ddl"
+import { AltimateCoreExportDdlTool } from "../altimate/tools/altimate-core-export-ddl"
+import { AltimateCoreFingerprintTool } from "../altimate/tools/altimate-core-fingerprint"
+import { AltimateCoreIntrospectionSqlTool } from "../altimate/tools/altimate-core-introspection-sql"
+import { AltimateCoreParseDbtTool } from "../altimate/tools/altimate-core-parse-dbt"
+import { AltimateCoreIsSafeTool } from "../altimate/tools/altimate-core-is-safe"
+import { ProjectScanTool } from "../altimate/tools/project-scan"
+// altimate_change end
+
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
@@ -120,6 +190,78 @@ export namespace ToolRegistry {
       ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),
+      // altimate_change start - register custom data engineering tools
+      SqlExecuteTool,
+      SchemaInspectTool,
+      SqlAnalyzeTool,
+      SqlOptimizeTool,
+      SqlTranslateTool,
+      LineageCheckTool,
+      WarehouseListTool,
+      WarehouseTestTool,
+      WarehouseAddTool,
+      WarehouseRemoveTool,
+      WarehouseDiscoverTool,
+      DbtRunTool,
+      DbtManifestTool,
+      DbtProfilesTool,
+      DbtLineageTool,
+      SchemaIndexTool,
+      SchemaSearchTool,
+      SchemaCacheStatusTool,
+      SqlExplainTool,
+      SqlFormatTool,
+      SqlFixTool,
+      SqlAutocompleteTool,
+      SqlDiffTool,
+      FinopsQueryHistoryTool,
+      FinopsAnalyzeCreditsTool,
+      FinopsExpensiveQueriesTool,
+      FinopsWarehouseAdviceTool,
+      FinopsUnusedResourcesTool,
+      FinopsRoleGrantsTool,
+      FinopsRoleHierarchyTool,
+      FinopsUserRolesTool,
+      SchemaDetectPiiTool,
+      SchemaTagsTool,
+      SchemaTagsListTool,
+      SqlRewriteTool,
+      SchemaDiffTool,
+      AltimateCoreValidateTool,
+      AltimateCoreLintTool,
+      AltimateCoreSafetyTool,
+      AltimateCoreTranspileTool,
+      AltimateCoreCheckTool,
+      AltimateCoreFixTool,
+      AltimateCorePolicyTool,
+      AltimateCoreSemanticsTool,
+      AltimateCoreTestgenTool,
+      AltimateCoreEquivalenceTool,
+      AltimateCoreMigrationTool,
+      AltimateCoreSchemaDiffTool,
+      AltimateCoreRewriteTool,
+      AltimateCoreCorrectTool,
+      AltimateCoreGradeTool,
+      AltimateCoreClassifyPiiTool,
+      AltimateCoreQueryPiiTool,
+      AltimateCoreResolveTermTool,
+      AltimateCoreColumnLineageTool,
+      AltimateCoreTrackLineageTool,
+      AltimateCoreFormatTool,
+      AltimateCoreExtractMetadataTool,
+      AltimateCoreCompareTool,
+      AltimateCoreCompleteTool,
+      AltimateCoreOptimizeContextTool,
+      AltimateCoreOptimizeForQueryTool,
+      AltimateCorePruneSchemaTool,
+      AltimateCoreImportDdlTool,
+      AltimateCoreExportDdlTool,
+      AltimateCoreFingerprintTool,
+      AltimateCoreIntrospectionSqlTool,
+      AltimateCoreParseDbtTool,
+      AltimateCoreIsSafeTool,
+      ProjectScanTool,
+      // altimate_change end
       ...custom,
     ]
   }
