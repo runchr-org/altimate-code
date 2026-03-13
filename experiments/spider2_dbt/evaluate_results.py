@@ -207,6 +207,10 @@ def main() -> None:
     print(f"  Tasks to evaluate: {len(task_results)}")
     print()
 
+    # Known missing gold DuckDB files — these tasks cannot be evaluated
+    # and should not count against the score.
+    KNOWN_MISSING_GOLD = {"airbnb002", "biketheft001", "google_ads001", "gitcoin001"}
+
     # Evaluate each task
     evaluations = []
     passed = 0
@@ -229,6 +233,22 @@ def main() -> None:
             continue
 
         eval_result = evaluate_task(instance_id, gold_entry)
+
+        # Warn about known missing gold databases
+        if eval_result.get("error") and instance_id in KNOWN_MISSING_GOLD:
+            print(
+                f"  [{i}/{len(task_results)}] {instance_id} — "
+                f"WARNING: known missing gold DB (excluded from scoring)"
+            )
+            evaluations.append({
+                "instance_id": instance_id,
+                "passed": False,
+                "error": f"Known missing gold DB: {instance_id}",
+                "method": "excluded",
+            })
+            errors += 1
+            continue
+
         evaluations.append(eval_result)
 
         if eval_result["passed"]:

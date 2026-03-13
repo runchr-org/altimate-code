@@ -35,7 +35,7 @@ DUCKDB_ZIP_DOWNLOADS = [
 # ── Execution ──────────────────────────────────────────────────────────────────
 
 ALTIMATE_CODE_BIN = os.environ.get("ALTIMATE_CODE_BIN", "altimate")
-DEFAULT_TIMEOUT = 1200  # seconds per task (phase-based prompt needs planning + execution time)
+DEFAULT_TIMEOUT = 1500  # seconds per task (enhanced prompt does more thorough work)
 MAX_RETRIES = 2  # auto-retry only for fast exits (API/init failures)
 FAST_EXIT_THRESHOLD_S = 10  # tasks completing under this are likely failures
 DEFAULT_PARALLEL = 2  # concurrent tasks (4 caused too much resource contention)
