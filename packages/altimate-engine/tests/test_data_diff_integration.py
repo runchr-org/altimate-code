@@ -32,9 +32,10 @@ try:
 except ImportError:
     RELADIFF_AVAILABLE = False
 
-pytestmark = pytest.mark.skipif(
-    not RELADIFF_AVAILABLE, reason="altimate-core not installed"
-)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not RELADIFF_AVAILABLE, reason="altimate-core not installed"),
+]
 
 from altimate_engine.connections import ConnectionRegistry
 from altimate_engine.sql.data_diff import run_data_diff

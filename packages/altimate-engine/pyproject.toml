@@ -32,6 +32,8 @@ dev = ["pytest>=7.0", "ruff>=0.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: requires real databases (DuckDB files, Docker Postgres)"]
+addopts = "-m 'not integration'"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/altimate_engine"]
