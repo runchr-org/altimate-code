@@ -219,7 +219,8 @@ def update_langfuse_traces(
         trace_id = trace_url.rsplit("/", 1)[-1]
 
         try:
-            client.score(
+            score_fn = getattr(client, "create_score", None) or client.score
+            score_fn(
                 trace_id=trace_id,
                 name="benchmark_pass",
                 value=1.0 if eval_result["passed"] else 0.0,
