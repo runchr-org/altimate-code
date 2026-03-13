@@ -886,6 +886,10 @@ export interface DataDiffRunParams {
   extra_columns?: string[]
   algorithm?: "auto" | "hashdiff" | "joindiff" | "profile" | "recon" | "cascade"
   where_clause?: string
+  source_where_clause?: string
+  target_where_clause?: string
+  numeric_tolerance?: number
+  timestamp_tolerance_ms?: number
   source_database?: string
   source_schema?: string
   target_database?: string

@@ -29,6 +29,23 @@ export const DataDiffRunTool = Tool.define("data_diff", {
           "profile=column statistics only. cascade=count→profile→content.",
       ),
     where_clause: z.string().optional().describe("Optional WHERE filter applied to both tables"),
+    source_where_clause: z
+      .string()
+      .optional()
+      .describe("WHERE filter applied only to the source table (e.g., date range filter)"),
+    target_where_clause: z
+      .string()
+      .optional()
+      .describe("WHERE filter applied only to the target table"),
+    numeric_tolerance: z
+      .number()
+      .optional()
+      .describe("Absolute tolerance for numeric comparisons (e.g., 0.01). Values within this threshold are treated as equal."),
+    timestamp_tolerance_ms: z
+      .number()
+      .int()
+      .optional()
+      .describe("Tolerance for timestamp comparisons in milliseconds (e.g., 1000 for 1 second)"),
     source_database: z.string().optional().describe("Source database/catalog name"),
     source_schema: z.string().optional().describe("Source schema name"),
     target_database: z.string().optional().describe("Target database/catalog name"),
@@ -45,6 +62,10 @@ export const DataDiffRunTool = Tool.define("data_diff", {
         extra_columns: args.extra_columns,
         algorithm: args.algorithm,
         where_clause: args.where_clause,
+        source_where_clause: args.source_where_clause,
+        target_where_clause: args.target_where_clause,
+        numeric_tolerance: args.numeric_tolerance,
+        timestamp_tolerance_ms: args.timestamp_tolerance_ms,
         source_database: args.source_database,
         source_schema: args.source_schema,
         target_database: args.target_database,
@@ -103,6 +124,39 @@ function formatOutcome(outcome: Record<string, unknown>, args: Record<string, un
       lines.push(`Exclusive to table2: ${stats.exclusive_table2 ?? 0}`)
       lines.push(`Updated: ${stats.updated ?? 0}`)
       lines.push(`Diff %: ${((stats.diff_percent as number) * 100).toFixed(2)}%`)
+
+      // Per-column match rates
+      const matchRates = (stats.column_match_rates ?? []) as Record<string, unknown>[]
+      if (matchRates.length > 0) {
+        lines.push("")
+        lines.push("Column Match Rates:")
+        for (const col of matchRates) {
+          const pct = (col.match_percent as number).toFixed(1)
+          lines.push(`  ${col.column}: ${pct}% (${col.matched}/${col.total})`)
+        }
+      }
+
+      // Mismatch samples
+      const samples = (stats.mismatch_samples ?? []) as Record<string, unknown>[]
+      if (samples.length > 0) {
+        lines.push("")
+        lines.push("Sample Mismatches:")
+        for (const s of samples) {
+          const key = (s.key_values as string[] | undefined)?.join(", ") ?? "?"
+          const cat = s.category as string
+          if (cat === "exclusive_table1") {
+            lines.push(`  [${key}] only in source`)
+          } else if (cat === "exclusive_table2") {
+            lines.push(`  [${key}] only in target`)
+          } else if (cat === "null_in_source") {
+            lines.push(`  [${key}] NULL in source, "${s.value_table2}" in target`)
+          } else if (cat === "null_in_target") {
+            lines.push(`  [${key}] "${s.value_table1}" in source, NULL in target`)
+          } else {
+            lines.push(`  [${key}] "${s.value_table1}" vs "${s.value_table2}"`)
+          }
+        }
+      }
     } else {
       lines.push(`Unchanged: ${stats.unchanged ?? stats.rows_table1}`)
     }

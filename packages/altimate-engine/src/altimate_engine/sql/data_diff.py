@@ -75,6 +75,10 @@ def run_data_diff(
     extra_columns: list[str] | None = None,
     algorithm: str = "auto",
     where_clause: str | None = None,
+    source_where_clause: str | None = None,
+    target_where_clause: str | None = None,
+    numeric_tolerance: float | None = None,
+    timestamp_tolerance_ms: int | None = None,
     source_database: str | None = None,
     source_schema: str | None = None,
     target_database: str | None = None,
@@ -109,20 +113,30 @@ def run_data_diff(
     if target_schema:
         table2["schema"] = target_schema
 
+    config: dict[str, Any] = {
+        "algorithm": algorithm,
+        "key_columns": key_columns,
+        "extra_columns": extra_columns or [],
+    }
+
+    if where_clause:
+        config["where_clause"] = where_clause
+    if source_where_clause:
+        config["where_clause_table1"] = source_where_clause
+    if target_where_clause:
+        config["where_clause_table2"] = target_where_clause
+    if numeric_tolerance is not None:
+        config["numeric_tolerance"] = numeric_tolerance
+    if timestamp_tolerance_ms is not None:
+        config["timestamp_tolerance_ms"] = timestamp_tolerance_ms
+
     spec = {
         "table1": table1,
         "table2": table2,
         "dialect1": dialect1,
         "dialect2": dialect2,
-        "config": {
-            "algorithm": algorithm,
-            "key_columns": key_columns,
-            "extra_columns": extra_columns or [],
-        },
+        "config": config,
     }
-
-    if where_clause:
-        spec["config"]["where_clause"] = where_clause
 
     logger.info("Starting reladiff session: %s", json.dumps(spec, indent=2))
 

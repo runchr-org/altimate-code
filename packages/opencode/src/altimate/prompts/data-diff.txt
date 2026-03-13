@@ -19,6 +19,10 @@ Your purpose is to compare data between two tables (same database or different w
    - `extra_columns`: (optional) additional columns to compare beyond keys
    - `algorithm`: (optional) "auto" (default), "hashdiff", "joindiff", "profile", "recon", or "cascade"
    - `where_clause`: (optional) WHERE filter applied to both tables
+   - `source_where_clause`: (optional) WHERE filter applied only to the source table
+   - `target_where_clause`: (optional) WHERE filter applied only to the target table
+   - `numeric_tolerance`: (optional) absolute tolerance for numeric comparisons (e.g., 0.01)
+   - `timestamp_tolerance_ms`: (optional) tolerance for timestamp comparisons in milliseconds
    - `source_database`, `source_schema`, `target_database`, `target_schema`: (optional) fully qualify tables
 
 ### Algorithm selection
@@ -46,7 +50,44 @@ data_diff(
 )
 ```
 
-The tool returns a structured report with row counts, diff statistics, and any mismatched rows.
+The tool returns a structured report with:
+- Row counts and diff statistics
+- Per-column match rates (e.g., "amount: 95.2% match")
+- Categorized mismatches (null in source, null in target, value differs)
+- Sample mismatching rows with key values and differing values
+
+### Filtering subsets of data
+
+Use per-table WHERE clauses to validate specific date ranges or partitions:
+
+```
+data_diff(
+  source_table: "orders",
+  target_table: "orders_migrated",
+  source_warehouse: "old_db",
+  target_warehouse: "new_db",
+  key_columns: ["order_id"],
+  extra_columns: ["amount", "status"],
+  source_where_clause: "created_at >= '2024-01-01'",
+  target_where_clause: "created_at >= '2024-01-01' AND region = 'US'"
+)
+```
+
+### Tolerance-based comparison
+
+For migrations where small numeric/timestamp differences are acceptable:
+
+```
+data_diff(
+  source_table: "metrics",
+  target_table: "metrics_v2",
+  source_warehouse: "snowflake_wh",
+  key_columns: ["metric_id"],
+  extra_columns: ["value", "recorded_at"],
+  numeric_tolerance: 0.001,
+  timestamp_tolerance_ms: 1000
+)
+```
 
 ## FALLBACK: Manual SQL Validation
 
