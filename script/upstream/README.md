@@ -1,240 +1,206 @@
-# Upstream Merge Automation
+# Upstream Merge Runbook
 
-Tools for merging upstream [OpenCode](https://github.com/anomalyco/opencode) releases into the Altimate Code fork with automatic conflict resolution, branding transforms, and version management.
+We maintain a fork of [anomalyco/opencode](https://github.com/anomalyco/opencode). This directory contains automation to merge upstream releases into our fork while preserving our customizations and rebranding user-facing surfaces.
 
-## Quick Start
+## Fork Strategy
+
+- **Internal names are kept as-is** — `@opencode-ai/`, `OPENCODE_*` env vars, `packages/opencode/`, `.opencode/` config dir. This minimizes merge conflicts and keeps upstream compatibility.
+- **User-facing surfaces are rebranded** — domains (`altimate.ai`), GitHub org (`AltimateAI`), product name (`Altimate Code`), install commands, app IDs.
+- **Custom code is protected** — files in `keepOurs` patterns are never overwritten by upstream. Our Python engine, bridge layer, altimate tools, and CI workflows stay untouched.
+- **Upstream-only packages are skipped** — platform packages (app, web, desktop, etc.), nix, SST infra, and translated READMEs are discarded during merge.
+
+## Prerequisites
 
 ```bash
-# 1. See what upstream versions are available
+# 1. Make sure the upstream remote exists
+git remote -v | grep upstream
+# If missing:
+git remote add upstream https://github.com/anomalyco/opencode.git
+
+# 2. Install merge tooling dependencies
+cd script/upstream && bun install && cd ../..
+
+# 3. Ensure your working tree is clean
+git status  # should show no uncommitted changes
+```
+
+## Step-by-Step Merge Process
+
+### 1. Check available upstream versions
+
+```bash
 bun run script/upstream/list-versions.ts
-
-# 2. Analyze what would change (dry-run, no modifications)
-bun run script/upstream/merge.ts --version v1.2.21 --dry-run
-
-# 3. Run the full merge
-bun run script/upstream/merge.ts --version v1.2.21
-
-# 4. If conflicts need manual resolution, fix them, then:
-git add <resolved-files>
-bun run script/upstream/merge.ts --continue
-
-# 5. Verify no upstream branding leaked through
-bun run script/upstream/analyze.ts --branding
 ```
 
-## Full Merge Process
+This shows upstream tags, their merge status (merged/available), and how many commits behind we are. It suggests the next version to merge.
 
-The merge script automates an 11-step process:
-
-```
- Step  Description                    Details
- ────  ─────────────────────────────  ────────────────────────────────────────
-  1    Validate environment           Clean tree, upstream remote, fetch tags
-  2    Snapshot package versions       Save our name/version before merge
-  3    Create branches                Backup branch + merge branch
-  4    Merge upstream                 git merge <tag> --no-edit
-  5    Auto-resolve conflicts         keepOurs, skipFiles, lock files, binaries
-  6    Report remaining conflicts     List files needing manual resolution
-  7    Apply branding transforms      URL, GitHub, product name replacements
-  8    Restore package versions       Revert upstream version bumps
-  9    Commit branding changes        Separate commit for traceability
- 10    Verify branding integrity      Scan for upstream branding leaks
- 11    Push & finalize                Push merge branch, print PR command
-```
-
-If step 6 finds unresolvable conflicts, the script exits with instructions.
-After manual resolution, run `--continue` to resume from step 7.
-
-## Available Scripts
-
-### `merge.ts` — Main Merge Orchestration
-
-The primary entry point for merging upstream releases.
+### 2. Preview what will change (dry-run)
 
 ```bash
-# Standard merge
-bun run script/upstream/merge.ts --version v1.2.21
-
-# Dry-run analysis (no changes to repo)
 bun run script/upstream/merge.ts --version v1.2.21 --dry-run
+```
 
-# Merge without pushing to origin
-bun run script/upstream/merge.ts --version v1.2.21 --no-push
+This categorizes every file that would change:
+- **Keep ours** (green) — auto-resolved by keeping our version
+- **Skip files** (cyan) — upstream-only, auto-accepted then deleted
+- **Lock files** (yellow) — regenerated via `bun install`
+- **Transformable** (magenta) — branding transforms applied
+- **Pass-through** (dim) — accepted from upstream without changes
 
-# Merge a specific commit instead of a tag
-bun run script/upstream/merge.ts --commit abc123def
+Review this to understand the scope before proceeding.
 
-# Resume after resolving conflicts
+### 3. Run the merge
+
+```bash
+bun run script/upstream/merge.ts --version v1.2.21
+```
+
+The script will:
+1. Create a backup branch (`backup/main-<timestamp>`)
+2. Create a merge branch (`upstream/merge-v1.2.21`)
+3. Run `git merge v1.2.21`
+4. Auto-resolve conflicts using keepOurs/skipFiles/lock-files strategies
+5. Apply branding transforms to user-facing text
+6. Restore our package names and versions
+
+**If there are no remaining conflicts**, the script commits, pushes, and prints a PR creation command.
+
+**If conflicts remain**, the script exits with a list of files to fix manually. See next step.
+
+### 4. Resolve remaining conflicts (if any)
+
+```bash
+# See what's still conflicted
+git diff --name-only --diff-filter=U
+
+# Open each file, resolve the <<<< ==== >>>> markers
+# Pay attention to `altimate_change` markers — they delimit our custom code
+
+# Stage resolved files
+git add <resolved-file>
+
+# Resume the merge (picks up from branding transforms onward)
 bun run script/upstream/merge.ts --continue
 ```
 
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--version, -v <tag>` | Upstream version tag to merge |
-| `--commit, -c <sha>` | Merge a specific commit instead |
-| `--base-branch <name>` | Branch to merge into (default: `main`) |
-| `--dry-run` | Preview changes without modifying the repo |
-| `--no-push` | Skip pushing the merge branch to origin |
-| `--continue` | Resume after manual conflict resolution |
-| `--author <name>` | Override merge commit author |
-| `--help, -h` | Show help |
-
-**Branches created:**
-- `backup/<current-branch>-<timestamp>` — safety snapshot
-- `upstream/merge-<version>` — the merge working branch
-
-### `analyze.ts` — Analysis & Verification
-
-Two modes: version preview and branding audit.
+### 5. Verify branding
 
 ```bash
-# Analyze what would change for a version
-bun run script/upstream/analyze.ts --version v1.2.21
-
-# Audit codebase for upstream branding leaks
 bun run script/upstream/analyze.ts --branding
+```
 
-# Detailed audit showing all matches
+This scans the codebase for upstream branding that may have leaked through (e.g., `opencode.ai` URLs, `anomalyco` GitHub refs). Exit code 1 means leaks were found.
+
+```bash
+# For full details on each leak
 bun run script/upstream/analyze.ts --branding --verbose
-
-# JSON output (for CI pipelines)
-bun run script/upstream/analyze.ts --branding --json
-
-# Default: marker integrity analysis
-bun run script/upstream/analyze.ts
 ```
 
-**Exit codes (branding mode):**
-- `0` — No leaks found
-- `1` — Branding leaks detected (useful for CI gates)
-- `2` — Script error
+Some matches are false positives (internal names we intentionally keep). If you find real leaks, either:
+- Add a branding rule in `utils/config.ts`
+- Or fix the specific file manually
 
-### `list-versions.ts` — List Upstream Versions
-
-Shows available upstream tags with merge status.
+### 6. Verify typecheck and tests
 
 ```bash
-# Show latest 30 versions
-bun run script/upstream/list-versions.ts
-
-# Show more
-bun run script/upstream/list-versions.ts --limit 50
-
-# Show all versions
-bun run script/upstream/list-versions.ts --all
-
-# JSON output
-bun run script/upstream/list-versions.ts --json
+bun install
+bunx turbo typecheck
+bun run --cwd packages/opencode test
 ```
 
-### `verify-restructure.ts` — Branch Verification
+### 7. Create the PR
 
-Compares custom code between branches to ensure nothing was lost during restructuring.
+The merge script prints a `gh pr create` command at the end. Review the diff, then merge.
 
-```bash
-bun run script/upstream/verify-restructure.ts
-bun run script/upstream/verify-restructure.ts --json
-```
+## CLI Reference
 
-## File Organization
-
-```
-script/upstream/
-├── merge.ts                 # Main merge orchestration (entry point)
-├── analyze.ts               # Version analysis & branding audit
-├── list-versions.ts         # List upstream tags with merge status
-├── verify-restructure.ts    # Branch comparison verification
-├── merge-config.json        # Declarative config (legacy, see config.ts)
-├── package.json             # Dependencies (minimatch)
-├── tsconfig.json            # TypeScript configuration
-├── README.md                # This file
-├── utils/
-│   ├── config.ts            # Branding rules, merge config, repoRoot()
-│   ├── git.ts               # Async git command helpers (Bun $)
-│   ├── logger.ts            # Colored terminal logging with step counters
-│   └── report.ts            # Transform report types, printing, JSON export
-└── transforms/
-    ├── keep-ours.ts          # Resolve conflicts by keeping our version
-    ├── skip-files.ts         # Resolve conflicts by accepting upstream
-    └── lock-files.ts         # Lock file resolution & regeneration
-```
+| Command | Purpose |
+|---------|---------|
+| `bun run script/upstream/list-versions.ts` | List upstream tags with merge status |
+| `bun run script/upstream/merge.ts --version <tag>` | Run full merge |
+| `bun run script/upstream/merge.ts --dry-run --version <tag>` | Preview changes only |
+| `bun run script/upstream/merge.ts --continue` | Resume after conflict resolution |
+| `bun run script/upstream/merge.ts --no-push --version <tag>` | Merge without pushing |
+| `bun run script/upstream/analyze.ts --branding` | Audit for branding leaks |
+| `bun run script/upstream/analyze.ts --branding --json` | Branding audit (CI-friendly) |
+| `bun run script/upstream/analyze.ts` | Check `altimate_change` marker integrity |
+| `bun run script/upstream/verify-restructure.ts` | Verify branch restructure |
 
 ## Configuration
 
-All configuration lives in `utils/config.ts` as TypeScript for type safety and inline documentation.
+All config lives in `utils/config.ts` (TypeScript for type safety). Key sections:
 
-### keepOurs — Files We Own
+### `keepOurs` — Files we own entirely
 
-These files are always kept as-is during merges. Conflicts are auto-resolved by checking out our version.
+These are auto-resolved by keeping our version during conflicts:
 
-| Pattern | Description |
-|---------|-------------|
-| `README.md`, `CONTRIBUTING.md`, etc. | Repository documentation |
-| `.github/workflows/**` | CI/CD pipelines |
-| `packages/altimate-engine/**` | Python engine (our code) |
-| `packages/opencode/src/altimate/**` | TypeScript custom code |
-| `packages/opencode/src/bridge/**` | Python-TS bridge |
+| Pattern | What it protects |
+|---------|-----------------|
+| `README.md`, `CONTRIBUTING.md`, etc. | Our documentation |
+| `.github/workflows/**`, `.github/actions/**` | Our CI/CD |
+| `packages/altimate-engine/**` | Python engine (100% our code) |
+| `packages/opencode/src/altimate/**` | Custom TypeScript tools |
+| `packages/opencode/src/bridge/**` | Python-TS JSON-RPC bridge |
 | `script/upstream/**` | This merge tooling |
-| `experiments/**`, `docs/**` | Research & documentation |
+| `experiments/**`, `docs/**`, `.claude/**` | Research and AI config |
+| `install` | Our install script |
+| `sdks/**` | Our SDKs |
+
+### `skipFiles` — Upstream packages we don't use
+
+These are accepted from upstream then effectively discarded (deleted from our repo):
+
+| Pattern | Why we skip it |
+|---------|---------------|
+| `packages/app/**`, `packages/web/**` | Hosted platform UI |
+| `packages/desktop/**`, `packages/desktop-electron/**` | Desktop app |
+| `packages/console/**`, `packages/enterprise/**` | SaaS features |
+| `packages/docs/**`, `packages/ui/**` | Upstream docs/components |
+| `packages/extensions/**`, `packages/slack/**` | Integrations |
+| `packages/function/**`, `packages/identity/**` | Serverless/auth |
+| `packages/containers/**`, `packages/storybook/**` | Container/Storybook |
+| `infra/**`, `sst.config.ts`, `sst-env.d.ts` | SST cloud infrastructure |
+| `nix/**`, `flake.nix`, `flake.lock` | Nix packaging |
+| `specs/**` | Upstream project specs |
+| `README.*.md` | Translated READMEs |
+
+### `preservePatterns` — Lines excluded from branding transforms
+
+Lines containing these strings are left untouched to avoid breaking internal code:
+
+- `@opencode-ai/` — npm package scope
+- `packages/opencode` — internal directory path
+- `OPENCODE_` — environment variables
+- `.opencode/` — config directory
+- `opencode.json` — config filenames
+- `import { ` — import statements
 
 ### Branding Rules
 
-Ordered from most specific to least specific to prevent partial matches:
+Ordered most-specific-first to prevent partial matches. Categories:
 
-| Category | Example Transform |
-|----------|-------------------|
-| URL subdomains | `auth.dev.opencode.ai` -> `auth.dev.altimate.ai` |
+| Category | Example |
+|----------|---------|
+| URL subdomains | `docs.opencode.ai` -> `docs.altimate.ai` |
 | Root domain | `opencode.ai` -> `altimate.ai` |
-| Short domain | `opncd.ai` -> `altimate.ai` |
-| GitHub repos | `anomalyco/opencode` -> `AltimateAI/altimate-code` |
+| GitHub org/repos | `anomalyco/opencode` -> `AltimateAI/altimate-code` |
 | Container registry | `ghcr.io/anomalyco` -> `ghcr.io/AltimateAI` |
-| Email addresses | `bot@opencode.ai` -> `bot@altimate.ai` |
+| Emails | `bot@opencode.ai` -> `bot@altimate.ai` |
 | App IDs | `ai.opencode.desktop` -> `ai.altimate.code.desktop` |
-| Product names | `OpenCode` -> `Altimate Code` |
+| Social | `x.com/altaborodin` -> `x.com/Altimateinc` |
+| Product name | `OpenCode` -> `Altimate Code` |
 | Install commands | `npm i -g opencode-ai` -> `npm i -g @altimateai/altimate-code` |
 | Homebrew | `anomalyco/tap/opencode` -> `AltimateAI/tap/altimate-code` |
 
-### Preserve Patterns
-
-Lines containing these strings are excluded from branding transforms to prevent breaking internal references:
-
-- `@opencode-ai/` — npm package scope (kept for upstream compatibility)
-- `OPENCODE_` — environment variables and feature flags
-- `.opencode/` — config directory path
-- `packages/opencode` — internal package path
-- `opencode.json` / `opencode.jsonc` — config file names
-- `window.__OPENCODE__` — runtime globals
-- `import { ` — import statements (would break code)
-
-### Change Markers
-
-Files in `packages/opencode/src/` that we've modified (but are not fully custom) use `altimate_change` markers to track our modifications:
-
-```typescript
-// altimate_change start — description of what we changed
-... our modifications ...
-// altimate_change end
-```
-
-These markers:
-- Help identify our changes during conflict resolution
-- Are audited by `analyze.ts` for integrity (unclosed blocks)
-- Guide reviewers to focus on our custom logic vs upstream code
-
-## How to Add New Branding Rules
+### Adding a new branding rule
 
 1. Open `utils/config.ts`
-2. Add your rule to the appropriate category array (e.g., `urlRules`, `githubRules`)
+2. Add your rule to the appropriate category array
 3. Place more specific patterns BEFORE less specific ones
-4. Include a descriptive `description` field
-5. Test with: `bun run script/upstream/analyze.ts --branding`
-
-Example:
+4. Test: `bun run script/upstream/analyze.ts --branding`
 
 ```typescript
-// In the urlRules array:
+// Example: adding a new subdomain
 {
   pattern: /newservice\.opencode\.ai/g,
   replacement: "newservice.altimate.ai",
@@ -242,15 +208,48 @@ Example:
 },
 ```
 
+## Change Markers
+
+When we modify upstream files (not fully custom ones), we wrap our changes with markers:
+
+```typescript
+// altimate_change start — description of what we changed
+... our modifications ...
+// altimate_change end
+```
+
+These help during conflict resolution — you can see exactly what we changed vs upstream code. The `analyze.ts` script audits for unclosed marker blocks.
+
+## File Organization
+
+```
+script/upstream/
+├── README.md                 # This runbook
+├── merge.ts                  # Main merge orchestrator
+├── analyze.ts                # Branding audit & marker analysis
+├── list-versions.ts          # List upstream tags with status
+├── verify-restructure.ts     # Branch comparison verification
+├── merge-config.json         # Legacy declarative config
+├── package.json              # Dependencies (minimatch)
+├── tsconfig.json             # TypeScript config
+├── utils/
+│   ├── config.ts             # All branding rules and merge config
+│   ├── git.ts                # Git command wrappers (sync + async)
+│   ├── logger.ts             # Colored terminal logging
+│   └── report.ts             # Merge report types and output
+└── transforms/
+    ├── keep-ours.ts           # Resolve conflicts: keep our version
+    ├── skip-files.ts          # Resolve conflicts: accept upstream
+    ├── lock-files.ts          # Lock file regeneration
+    └── branding.ts            # Apply branding replacements
+```
+
 ## Troubleshooting
 
-### Merge fails with "working tree has uncommitted changes"
+### "Working tree has uncommitted changes"
 
+Commit or stash your work before merging:
 ```bash
-# Option 1: Commit your changes
-git add -A && git commit -m "wip: save work before merge"
-
-# Option 2: Stash your changes
 git stash
 bun run script/upstream/merge.ts --version v1.2.21
 git stash pop
@@ -258,29 +257,14 @@ git stash pop
 
 ### Conflicts remain after auto-resolution
 
-The script lists remaining conflicts and exits. Resolve them manually:
+This is normal for complex merges. The script lists exactly which files need manual resolution. Look for `altimate_change` markers to understand what's ours vs upstream.
 
-```bash
-# See what's still conflicted
-git diff --name-only --diff-filter=U
+### Branding leaks after merge
 
-# Open a conflicted file, resolve the markers (<<<, ===, >>>)
-# Stage the resolved file
-git add <file>
-
-# Resume the merge
-bun run script/upstream/merge.ts --continue
-```
-
-### Branding leaks detected after merge
-
-```bash
-# See all leaks with full detail
-bun run script/upstream/analyze.ts --branding --verbose
-
-# Some leaks are false positives (preserved patterns in new contexts)
-# To fix real leaks: add a new branding rule or preserve pattern in config.ts
-```
+Run `bun run script/upstream/analyze.ts --branding --verbose` to see details. Common fixes:
+- Add a new rule in `utils/config.ts` if it's a pattern we should always replace
+- Add to `preservePatterns` if it's a false positive
+- Fix manually if it's a one-off
 
 ### Upstream remote not found
 
@@ -289,64 +273,30 @@ git remote add upstream https://github.com/anomalyco/opencode.git
 git fetch upstream --tags
 ```
 
-The merge script will auto-add the remote if missing.
-
-### Aborting a merge in progress
+### Aborting a merge
 
 ```bash
-# Abort the git merge
 git merge --abort
-
-# Switch back to your original branch
 git checkout main
-
-# Delete the merge branch
 git branch -D upstream/merge-v1.2.21
 ```
 
 ### Recovering from a failed merge
 
 The script creates a backup branch before starting:
-
 ```bash
-# Find your backup branch
 git branch | grep backup/
-
-# Restore from backup
 git checkout main
-git reset --hard backup/main-2026-03-14T10-30-00
+git reset --hard backup/main-<timestamp>
 ```
 
 ### State file left behind
 
-If a merge was interrupted, a `.upstream-merge-state.json` file may remain in the repo root. It is safe to delete:
-
+If interrupted, delete the state file:
 ```bash
 rm .upstream-merge-state.json
 ```
 
-## CI Integration
-
-The branding audit can be used as a CI gate:
-
-```yaml
-# .github/workflows/branding-check.yml
-- name: Check for branding leaks
-  run: bun run script/upstream/analyze.ts --branding --json
-```
-
-Exit code 1 means leaks were found, which can block the PR.
-
-## Setup
-
-```bash
-# 1. Ensure upstream remote exists (auto-added by merge.ts if missing)
-git remote add upstream https://github.com/anomalyco/opencode.git
-
-# 2. Install dependencies for the merge tooling
-cd script/upstream && bun install
-```
-
 ## Inspiration
 
-This tooling was inspired by [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode)'s upstream merge automation, adapted for Altimate Code's specific branding patterns and fork structure.
+This tooling was inspired by [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode)'s upstream merge automation, adapted for Altimate Code's fork structure and branding requirements.
