@@ -8,7 +8,7 @@ The monorepo produces two publishable packages:
 
 | Package | Registry | Trigger |
 |---------|----------|---------|
-| `altimate-code-ai` | npm | `v*` tag (e.g., `v0.2.0`) |
+| `@altimateai/altimate-code` | npm | `v*` tag (e.g., `v0.3.0`) |
 | `altimate-engine` | PyPI | Same `v*` tag (published alongside CLI) |
 
 Both packages are versioned and released together. The CLI embeds the expected engine version at build time and auto-installs it on end-user machines.
@@ -90,7 +90,7 @@ After the workflow completes:
 
 ```bash
 # npm
-npm info altimate-code-ai version
+npm info @altimateai/altimate-code version
 
 # PyPI
 pip install altimate-engine==0.2.0

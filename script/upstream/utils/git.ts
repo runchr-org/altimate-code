@@ -113,9 +113,14 @@ export async function commit(message: string): Promise<void> {
   })
 }
 
-/** Fetch all refs from a remote. Uses --force for tags to handle local/upstream tag conflicts. */
+/**
+ * Fetch refs from a remote WITHOUT importing its tags into our tag namespace.
+ * Upstream tags (v0.x, v1.x) would collide with our own release tags.
+ * The merge uses the tag ref directly (e.g., upstream/v1.2.26) so we
+ * don't need them as local tags.
+ */
 export async function fetchRemote(remote: string): Promise<void> {
-  git(`fetch ${remote} --tags --force`)
+  git(`fetch ${remote} --no-tags`)
 }
 
 /** List all tags from a remote, returned as an array of tag names. */

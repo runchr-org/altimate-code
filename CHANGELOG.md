@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-15
+
+### Added
+
+- AI-powered prompt enhancement (#144)
+- Altimate Memory — persistent cross-session memory with TTL, namespaces, citations, and audit logging (#136)
+- Upstream merge with OpenCode v1.2.26 (#142)
+
+### Fixed
+
+- Sentry review findings from PR #144 (#147)
+- OAuth token refresh retry and error handling for idle timeout (#133)
+- Welcome banner on first CLI run after install/upgrade (#132)
+- `@altimateai/altimate-code` npm package name restored after upstream rebase
+- Replace `mock.module()` with `spyOn()` to fix 149 test failures (#153)
+
+### Changed
+
+- Rebrand user-facing references to Altimate Code (#134)
+- Bump `@modelcontextprotocol/sdk` dependency (#139)
+- Engine version bumped to 0.3.0
+
 ## [0.2.5] - 2026-03-13
 
 ### Added
@@ -13,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Datamate manager — dynamic MCP server management (#99)
 - Non-interactive mode for `mcp add` command with input validation
 - `mcp remove` command
-- Upstream merge with Altimate Code v1.2.20
+- Upstream merge with OpenCode v1.2.20
 
 ### Fixed
 
@@ -134,7 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Build: resolve @opentui/core parser.worker.js via import.meta.resolve for monorepo hoisting
 - Build: output binary as `altimate-code` instead of `opencode`
-- Publish: update Docker/AUR/Homebrew references from AltimateAI/altimate-code to AltimateAI/altimate-code
+- Publish: update Docker/AUR/Homebrew references from anomalyco/opencode to AltimateAI/altimate-code
 - Publish: make Docker/AUR/Homebrew steps non-fatal
 - Bin wrapper: look for `@altimateai/altimate-code-*` scoped platform packages
 - Postinstall: resolve `@altimateai` scoped platform packages

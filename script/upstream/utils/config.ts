@@ -249,6 +249,7 @@ export const defaultConfig: MergeConfig = {
     "SECURITY.md",
     "CODE_OF_CONDUCT.md",
     "RELEASING.md",
+    "CHANGELOG.md",
     ".github/workflows/**",
     ".github/actions/**",
     ".github/PULL_REQUEST_TEMPLATE.md",
@@ -260,6 +261,13 @@ export const defaultConfig: MergeConfig = {
     "packages/altimate-engine/**",
     "packages/opencode/src/altimate/**",
     "packages/opencode/src/bridge/**",
+    // Build and publish scripts have critical branding (binary name, user-agent,
+    // engine version embedding, archive naming, altimate-code symlink)
+    "packages/opencode/script/build.ts",
+    "packages/opencode/script/publish.ts",
+    "packages/opencode/script/bump-version.ts",
+    // Bin wrappers are Altimate-branded
+    "packages/opencode/bin/**",
     "experiments/**",
     "docs/**",
     ".claude/**",

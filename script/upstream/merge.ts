@@ -346,21 +346,35 @@ async function autoResolveConflicts(
 // Version snapshot / restore
 // ---------------------------------------------------------------------------
 
+interface PackageVersionEntry {
+  type: "package.json"
+  name: string
+  version: string
+}
+
+interface TextVersionEntry {
+  type: "text"
+  pattern: string
+  version: string
+}
+
+type VersionEntry = PackageVersionEntry | TextVersionEntry
+
 interface VersionSnapshot {
-  [packageJsonPath: string]: {
-    name: string
-    version: string
-  }
+  [filePath: string]: VersionEntry
 }
 
 /**
  * Snapshot current package versions before merge so we can restore them after.
  * Upstream merges often bump versions; we want to keep our own versioning.
+ *
+ * Covers both package.json files and the Python engine version files.
  */
 function snapshotVersions(): VersionSnapshot {
   const root = repoRoot()
   const snapshot: VersionSnapshot = {}
 
+  // --- package.json files ---
   const packageJsonPaths = [
     "package.json",
     "packages/opencode/package.json",
@@ -377,11 +391,41 @@ function snapshotVersions(): VersionSnapshot {
     try {
       const pkg = JSON.parse(fs.readFileSync(fullPath, "utf-8"))
       snapshot[relPath] = {
+        type: "package.json",
         name: pkg.name || "",
         version: pkg.version || "",
       }
     } catch {
       // Skip unreadable package.json files
+    }
+  }
+
+  // --- Engine version files (Python) ---
+  const pyprojectPath = "packages/altimate-engine/pyproject.toml"
+  const pyprojectFull = path.join(root, pyprojectPath)
+  if (fs.existsSync(pyprojectFull)) {
+    const content = fs.readFileSync(pyprojectFull, "utf-8")
+    const match = content.match(/^version\s*=\s*"([^"]+)"/m)
+    if (match) {
+      snapshot[pyprojectPath] = {
+        type: "text",
+        pattern: "version",
+        version: match[1],
+      }
+    }
+  }
+
+  const initPath = "packages/altimate-engine/src/altimate_engine/__init__.py"
+  const initFull = path.join(root, initPath)
+  if (fs.existsSync(initFull)) {
+    const content = fs.readFileSync(initFull, "utf-8")
+    const match = content.match(/__version__\s*=\s*"([^"]+)"/)
+    if (match) {
+      snapshot[initPath] = {
+        type: "text",
+        pattern: "__version__",
+        version: match[1],
+      }
     }
   }
 
@@ -395,27 +439,56 @@ function restoreVersions(snapshot: VersionSnapshot): number {
   const root = repoRoot()
   let restored = 0
 
-  for (const [relPath, { name, version }] of Object.entries(snapshot)) {
+  for (const [relPath, entry] of Object.entries(snapshot)) {
     const fullPath = path.join(root, relPath)
     if (!fs.existsSync(fullPath)) continue
 
     try {
-      const pkg = JSON.parse(fs.readFileSync(fullPath, "utf-8"))
-      let changed = false
+      if (entry.type === "package.json") {
+        const pkg = JSON.parse(fs.readFileSync(fullPath, "utf-8"))
+        let changed = false
 
-      if (name && pkg.name !== name) {
-        pkg.name = name
-        changed = true
-      }
-      if (version && pkg.version !== version) {
-        pkg.version = version
-        changed = true
-      }
+        if (entry.name && pkg.name !== entry.name) {
+          pkg.name = entry.name
+          changed = true
+        }
+        if (entry.version && pkg.version !== entry.version) {
+          pkg.version = entry.version
+          changed = true
+        }
 
-      if (changed) {
-        fs.writeFileSync(fullPath, JSON.stringify(pkg, null, 2) + "\n")
-        restored++
-        logger.success(`Restored version in ${relPath}: ${name}@${version}`)
+        if (changed) {
+          fs.writeFileSync(fullPath, JSON.stringify(pkg, null, 2) + "\n")
+          restored++
+          logger.success(`Restored version in ${relPath}: ${entry.name}@${entry.version}`)
+        }
+      } else if (entry.type === "text") {
+        let content = fs.readFileSync(fullPath, "utf-8")
+        let changed = false
+
+        if (entry.pattern === "version") {
+          // pyproject.toml: version = "X.Y.Z"
+          const re = /^(version\s*=\s*")([^"]+)(")/m
+          const match = content.match(re)
+          if (match && match[2] !== entry.version) {
+            content = content.replace(re, `$1${entry.version}$3`)
+            changed = true
+          }
+        } else if (entry.pattern === "__version__") {
+          // __init__.py: __version__ = "X.Y.Z"
+          const re = /(__version__\s*=\s*")([^"]+)(")/
+          const match = content.match(re)
+          if (match && match[2] !== entry.version) {
+            content = content.replace(re, `$1${entry.version}$3`)
+            changed = true
+          }
+        }
+
+        if (changed) {
+          fs.writeFileSync(fullPath, content)
+          restored++
+          logger.success(`Restored version in ${relPath}: ${entry.version}`)
+        }
       }
     } catch {
       logger.warn(`Could not restore version in ${relPath}`)
@@ -809,6 +882,77 @@ async function cleanupSkipFiles(config: MergeConfig): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Package.json sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove upstream junk from package.json that leaks through merges.
+ * - Removes unknown top-level fields (e.g., "randomField")
+ * - Removes junk scripts (echo-only stubs)
+ * - Removes "opencode" bin entry
+ * - Fixes "altimate" bin path to ./bin/altimate
+ */
+function sanitizePackageJson(pkgPath: string): void {
+  if (!fs.existsSync(pkgPath)) return
+
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
+  let changed = false
+
+  // Known top-level keys to keep
+  const allowedKeys = new Set([
+    "$schema", "name", "version", "type", "license", "private", "description",
+    "scripts", "bin", "exports", "dependencies", "devDependencies",
+    "peerDependencies", "optionalDependencies", "overrides", "resolutions",
+    "engines", "repository", "homepage", "bugs", "keywords", "author",
+    "contributors", "files", "main", "module", "types", "typings",
+    "sideEffects", "publishConfig", "workspaces",
+  ])
+
+  for (const key of Object.keys(pkg)) {
+    if (!allowedKeys.has(key)) {
+      logger.info(`Removing junk field from package.json: "${key}"`)
+      delete pkg[key]
+      changed = true
+    }
+  }
+
+  // Remove junk scripts (echo-only stubs from upstream)
+  if (pkg.scripts) {
+    const junkScripts = ["random", "clean", "lint", "format", "docs", "deploy"]
+    for (const name of junkScripts) {
+      if (pkg.scripts[name] && pkg.scripts[name].startsWith("echo ")) {
+        logger.info(`Removing junk script: "${name}"`)
+        delete pkg.scripts[name]
+        changed = true
+      }
+    }
+  }
+
+  // Remove "opencode" bin entry and fix "altimate" path
+  if (pkg.bin) {
+    if (pkg.bin.opencode) {
+      logger.info('Removing "opencode" bin entry')
+      delete pkg.bin.opencode
+      changed = true
+    }
+    if (pkg.bin.altimate !== "./bin/altimate") {
+      logger.info('Fixing "altimate" bin path to ./bin/altimate')
+      pkg.bin.altimate = "./bin/altimate"
+      changed = true
+    }
+    if (pkg.bin["altimate-code"] !== "./bin/altimate-code") {
+      pkg.bin["altimate-code"] = "./bin/altimate-code"
+      changed = true
+    }
+  }
+
+  if (changed) {
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n")
+    logger.success("Sanitized package.json")
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Post-merge transforms (steps 7-11)
 // ---------------------------------------------------------------------------
 
@@ -828,6 +972,10 @@ async function postMergeTransforms(
   await cleanupSkipFiles(config)
 
   await applyBrandingTransforms(config, report)
+
+  // ─── Step 7b: Sanitize package.json (remove upstream junk) ──────────────
+
+  sanitizePackageJson(path.join(root, "packages/opencode/package.json"))
 
   // ─── Step 8: Restore package versions ─────────────────────────────────────
 
