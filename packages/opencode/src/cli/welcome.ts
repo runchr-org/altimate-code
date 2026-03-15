@@ -2,7 +2,6 @@ import fs from "fs"
 import path from "path"
 import os from "os"
 import { Installation } from "../installation"
-import { extractChangelog } from "./changelog"
 import { EOL } from "os"
 
 const APP_NAME = "altimate-code"
@@ -16,9 +15,11 @@ function getDataDir(): string {
 
 /**
  * Check for a post-install/upgrade marker written by postinstall.mjs.
- * If found, display a welcome banner (and changelog on upgrade), then remove the marker.
+ * If found, display a brief upgrade confirmation on stderr, then remove the marker.
  *
- * npm v7+ silences postinstall stdout, so this is the reliable way to show the banner.
+ * The postinstall script shows the full welcome box (with get-started hints).
+ * This function handles the case where postinstall output was silenced (npm v7+)
+ * or the install method didn't run postinstall at all (brew, curl).
  */
 export function showWelcomeBannerIfNeeded(): void {
   try {
@@ -39,7 +40,7 @@ export function showWelcomeBannerIfNeeded(): void {
 
     if (!isUpgrade) return
 
-    // Show welcome box
+    // Show a brief confirmation — the full welcome box is in postinstall.mjs
     const tty = process.stderr.isTTY
     if (!tty) return
 
@@ -50,28 +51,6 @@ export function showWelcomeBannerIfNeeded(): void {
     process.stderr.write(EOL)
     process.stderr.write(`  ${orange}${bold}altimate-code v${currentVersion}${reset} installed successfully!${EOL}`)
     process.stderr.write(EOL)
-
-    // Try to show changelog for this version
-    const changelog = extractChangelog("0.0.0", currentVersion)
-    if (changelog) {
-      // Extract only the latest version section
-      const latestSection = changelog.split(/\n## \[/)[0]
-      if (latestSection) {
-        const dim = "\x1b[2m"
-        const cyan = "\x1b[36m"
-        const lines = latestSection.split("\n")
-        for (const line of lines) {
-          if (line.startsWith("## [")) {
-            process.stderr.write(`  ${cyan}${line}${reset}${EOL}`)
-          } else if (line.startsWith("### ")) {
-            process.stderr.write(`  ${bold}${line}${reset}${EOL}`)
-          } else if (line.trim()) {
-            process.stderr.write(`  ${dim}${line}${reset}${EOL}`)
-          }
-        }
-        process.stderr.write(EOL)
-      }
-    }
   } catch {
     // Non-fatal — never let banner display break the CLI
   }
