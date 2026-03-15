@@ -34,6 +34,10 @@ import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
+// altimate_change start - import prompt enhancement
+import { enhancePrompt, isAutoEnhanceEnabled } from "@/altimate/enhance-prompt"
+let enhancingInProgress = false
+// altimate_change end
 
 export type PromptProps = {
   sessionID?: string
@@ -194,6 +198,53 @@ export function Prompt(props: PromptProps) {
           dialog.clear()
         },
       },
+      // altimate_change start - add prompt enhance command
+      {
+        title: "Enhance prompt",
+        value: "prompt.enhance",
+        keybind: "prompt_enhance",
+        category: "Prompt",
+        enabled: !!store.prompt.input,
+        onSelect: async (dialog) => {
+          if (!store.prompt.input.trim()) return
+          dialog.clear()
+          const original = store.prompt.input
+          toast.show({
+            message: "Enhancing prompt...",
+            variant: "info",
+            duration: 2000,
+          })
+          try {
+            const enhanced = await enhancePrompt(original)
+            // Guard against race condition: if user edited the prompt while
+            // enhancement was in-flight, discard the stale enhanced result
+            if (store.prompt.input !== original) return
+            if (enhanced !== original) {
+              input.setText(enhanced)
+              setStore("prompt", "input", enhanced)
+              input.gotoBufferEnd()
+              toast.show({
+                message: "Prompt enhanced",
+                variant: "success",
+                duration: 2000,
+              })
+            } else {
+              toast.show({
+                message: "Prompt already looks good",
+                variant: "info",
+                duration: 2000,
+              })
+            }
+          } catch {
+            toast.show({
+              message: "Failed to enhance prompt",
+              variant: "error",
+              duration: 3000,
+            })
+          }
+        },
+      },
+      // altimate_change end
       {
         title: "Paste",
         value: "prompt.paste",
@@ -564,6 +615,32 @@ export function Prompt(props: PromptProps) {
     const messageID = MessageID.ascending()
     let inputText = store.prompt.input
 
+    // altimate_change start - auto-enhance prompt before expanding paste text
+    // Only enhance the raw user text, not shell commands or slash commands
+    // Guard prevents concurrent enhancement calls from rapid submissions
+    if (store.mode === "normal" && !inputText.startsWith("/") && !enhancingInProgress) {
+      try {
+        const autoEnhance = await isAutoEnhanceEnabled()
+        if (autoEnhance) {
+          enhancingInProgress = true
+          toast.show({ message: "Enhancing prompt...", variant: "info", duration: 2000 })
+          const enhanced = await enhancePrompt(inputText)
+          // Discard if user changed the prompt during enhancement
+          if (store.prompt.input !== inputText) return
+          if (enhanced !== inputText) {
+            inputText = enhanced
+            setStore("prompt", "input", enhanced)
+          }
+        }
+      } catch (err) {
+        // Enhancement failure should never block prompt submission
+        console.error("auto-enhance failed, using original prompt", err)
+      } finally {
+        enhancingInProgress = false
+      }
+    }
+    // altimate_change end
+
     // Expand pasted text inline before submitting
     const allExtmarks = input.extmarks.getAllForTypeId(promptPartTypeId)
     const sortedExtmarks = allExtmarks.sort((a: { start: number }, b: { start: number }) => b.start - a.start)
@@ -653,6 +730,7 @@ export function Prompt(props: PromptProps) {
     }
     history.append({
       ...store.prompt,
+      input: inputText,
       mode: currentMode,
     })
     input.extmarks.clear()
@@ -1155,6 +1233,11 @@ export function Prompt(props: PromptProps) {
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
+                  {/* altimate_change start - show enhance hint */}
+                  <text fg={theme.text}>
+                    {keybind.print("prompt_enhance")} <span style={{ fg: theme.textMuted }}>enhance</span>
+                  </text>
+                  {/* altimate_change end */}
                 </Match>
                 <Match when={store.mode === "shell"}>
                   <text fg={theme.text}>

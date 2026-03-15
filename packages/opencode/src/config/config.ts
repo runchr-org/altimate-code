@@ -866,6 +866,9 @@ export namespace Config {
       agent_cycle: z.string().optional().default("tab").describe("Next agent"),
       agent_cycle_reverse: z.string().optional().default("shift+tab").describe("Previous agent"),
       variant_cycle: z.string().optional().default("ctrl+t").describe("Cycle model variants"),
+      // altimate_change start - add prompt enhance keybind
+      prompt_enhance: z.string().optional().default("<leader>i").describe("Enhance prompt with AI before sending"),
+      // altimate_change end
       input_clear: z.string().optional().default("ctrl+c").describe("Clear input field"),
       input_paste: z.string().optional().default("ctrl+v").describe("Paste from clipboard"),
       input_submit: z.string().optional().default("return").describe("Submit input"),
@@ -1226,6 +1229,14 @@ export namespace Config {
             .positive()
             .optional()
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
+          // altimate_change start - auto-enhance prompt config
+          auto_enhance_prompt: z
+            .boolean()
+            .optional()
+            .describe(
+              "Automatically enhance prompts with AI before sending (default: false). Uses a small model to rewrite rough prompts into clearer versions.",
+            ),
+          // altimate_change end
         })
         .optional(),
     })
