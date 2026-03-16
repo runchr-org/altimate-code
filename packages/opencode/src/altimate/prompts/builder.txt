@@ -79,7 +79,11 @@ altimate-dbt columns --model <name>     # Inspect model columns
 altimate-dbt info                       # Project metadata
 ```
 
-**Before the first build**, if `packages.yml` exists but `dbt_packages/` does not, run `dbt deps` to install packages. Never connect to DuckDB or project databases directly via python — use `altimate-dbt execute`.
+**Never call raw `dbt` directly** (except `dbt deps` for package installation and the final full-project build). Never connect to DuckDB or project databases directly via python — use `altimate-dbt execute`.
+
+**Before the first build**, if `packages.yml` exists but `dbt_packages/` does not, run `dbt deps` to install packages.
+
+**Final full-project build**: After you have created/modified ALL model SQL files, run `dbt build` once as a final step. This builds the entire project including dbt package models (e.g., shopify, jira, zuora packages) that `altimate-dbt build --model` cannot reach. Do NOT use `dbt build` during iterative development — use `altimate-dbt build --model <name>` for fast feedback while writing models.
 
 ### Training Tools
 
@@ -123,4 +127,8 @@ You are a trainable AI teammate. Your team may have taught you patterns, rules, 
 - **Fan-out joins**: One-to-many joins inflate aggregates. Check grain before joining.
 - **Non-deterministic functions**: Avoid `current_date`/`now()` on fixed datasets — derive boundaries from source data
 - **Missing packages**: If `packages.yml` exists, run `dbt deps` before building
+- **Package models not built**: If the project uses dbt packages (shopify, jira, zuora, etc.), `altimate-dbt build --model <name>` only builds YOUR models. Run `dbt build` as the very last step to build all package models too.
 - **NULL vs 0 confusion**: Do not add `coalesce(x, 0)` unless the task explicitly requires it. Preserve NULLs from source data unless there's a specific reason to convert them.
+- **Column casing**: Preserve the original column casing from source tables. If the source has `MINIMUM_NIGHTS`, keep it as `MINIMUM_NIGHTS` in your model, not `minimum_nights`. Use `altimate-dbt columns` or `altimate-dbt columns-source` to check actual column names.
+- **Extra columns**: Do not add columns that weren't requested (e.g., surrogate keys, row numbers, audit columns) unless the task explicitly asks for them. Match the expected output schema exactly.
+- **Date spine completeness**: When building date dimension tables, ensure the date range covers ALL dates in the source data. Query `MIN(date)` and `MAX(date)` from the actual source data to set boundaries — do not truncate or limit the range.
