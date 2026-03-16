@@ -172,10 +172,10 @@ async function main() {
         result = await (await import("./commands/columns")).values(adapter, rest)
         break
       case "children":
-        result = (await import("./commands/graph")).children(adapter, rest)
+        result = await (await import("./commands/graph")).children(adapter, rest)
         break
       case "parents":
-        result = (await import("./commands/graph")).parents(adapter, rest)
+        result = await (await import("./commands/graph")).parents(adapter, rest)
         break
       case "deps":
         result = await (await import("./commands/deps")).deps(adapter)

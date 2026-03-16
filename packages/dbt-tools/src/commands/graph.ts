@@ -1,15 +1,15 @@
 import type { DBTProjectIntegrationAdapter } from "@altimateai/dbt-integration"
 
-export function children(adapter: DBTProjectIntegrationAdapter, args: string[]) {
+export async function children(adapter: DBTProjectIntegrationAdapter, args: string[]) {
   const model = flag(args, "model")
   if (!model) return { error: "Missing --model" }
-  return adapter.getChildrenModels({ table: model })
+  return await adapter.getChildrenModels({ table: model })
 }
 
-export function parents(adapter: DBTProjectIntegrationAdapter, args: string[]) {
+export async function parents(adapter: DBTProjectIntegrationAdapter, args: string[]) {
   const model = flag(args, "model")
   if (!model) return { error: "Missing --model" }
-  return adapter.getParentModels({ table: model })
+  return await adapter.getParentModels({ table: model })
 }
 
 function flag(args: string[], name: string): string | undefined {
