@@ -94,12 +94,6 @@ altimate-dbt compile --model <name>                        # catch Jinja errors
 altimate-dbt build --model <name>                          # materialize + run tests
 ```
 
-**Final full-project build** (after ALL models are created/modified):
-```bash
-dbt build                                                  # builds everything including package models
-```
-This is essential when the project uses dbt packages (shopify, jira, zuora, etc.) — `altimate-dbt build --model` only builds YOUR models, not package models.
-
 **Verify the output:**
 ```bash
 altimate-dbt columns --model <name>                        # confirm expected columns exist
