@@ -55,6 +55,7 @@ export namespace Filesystem {
     try {
       if (mode) {
         await writeFile(p, content, { mode })
+        await chmod(p, mode)
       } else {
         await writeFile(p, content)
       }
@@ -63,6 +64,7 @@ export namespace Filesystem {
         await mkdir(dirname(p), { recursive: true })
         if (mode) {
           await writeFile(p, content, { mode })
+          await chmod(p, mode)
         } else {
           await writeFile(p, content)
         }

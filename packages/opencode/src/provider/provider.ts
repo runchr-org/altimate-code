@@ -18,6 +18,7 @@ import { iife } from "@/util/iife"
 import { Global } from "../global"
 import path from "path"
 import { Filesystem } from "../util/filesystem"
+import { AltimateApi } from "../altimate/api/client"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
@@ -176,6 +177,26 @@ export namespace Provider {
       return {
         autoload: Object.keys(input.models).length > 0,
         options: hasKey ? {} : { apiKey: "public" },
+      }
+    },
+    "altimate-backend": async () => {
+      const isConfigured = await AltimateApi.isConfigured()
+      if (!isConfigured) return { autoload: false }
+
+      try {
+        const creds = await AltimateApi.getCredentials()
+        return {
+          autoload: true,
+          options: {
+            baseURL: `${creds.altimateUrl.replace(/\/+$/, "")}/agents/v1`,
+            apiKey: creds.altimateApiKey,
+            headers: {
+              "x-tenant": creds.altimateInstanceName,
+            },
+          },
+        }
+      } catch {
+        return { autoload: false }
       }
     },
     openai: async () => {
@@ -874,6 +895,43 @@ export namespace Provider {
           ...model,
           providerID: ProviderID.githubCopilotEnterprise,
         })),
+      }
+    }
+
+    // Register altimate-backend as an OpenAI-compatible provider
+    if (!database["altimate-backend"]) {
+      const backendModels: Record<string, Model> = {
+        "altimate-default": {
+          id: ModelID.make("altimate-default"),
+          providerID: ProviderID.make("altimate-backend"),
+          name: "Altimate AI",
+          family: "openai",
+          api: { id: "altimate-default", url: "", npm: "@ai-sdk/openai-compatible" },
+          status: "active",
+          headers: {},
+          options: {},
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+          limit: { context: 200000, output: 128000 },
+          capabilities: {
+            temperature: true,
+            reasoning: false,
+            attachment: false,
+            toolcall: true,
+            input: { text: true, audio: false, image: true, video: false, pdf: false },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          release_date: "2025-01-01",
+          variants: {},
+        },
+      }
+      database["altimate-backend"] = {
+        id: ProviderID.make("altimate-backend"),
+        name: "Altimate",
+        source: "custom",
+        env: [],
+        options: {},
+        models: backendModels,
       }
     }
 

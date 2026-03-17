@@ -13,6 +13,7 @@ import { DialogModel } from "./dialog-model"
 import { useKeyboard } from "@opentui/solid"
 import { Clipboard } from "@tui/util/clipboard"
 import { useToast } from "../ui/toast"
+import { DialogAltimateLogin } from "./dialog-altimate-login"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -21,6 +22,7 @@ const PROVIDER_PRIORITY: Record<string, number> = {
   "github-copilot": 3,
   anthropic: 4,
   google: 5,
+  "altimate-backend": 6,
 }
 
 export function createDialogProviderOptions() {
@@ -35,6 +37,7 @@ export function createDialogProviderOptions() {
         title: provider.name,
         value: provider.id,
         description: {
+          "altimate-backend": "(API key)",
           opencode: "(Recommended)",
           anthropic: "(API key)",
           openai: "(ChatGPT Plus/Pro or API key)",
@@ -42,6 +45,10 @@ export function createDialogProviderOptions() {
         }[provider.id],
         category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Other",
         async onSelect() {
+          if (provider.id === "altimate-backend") {
+            dialog.replace(() => <DialogAltimateLogin />)
+            return
+          }
           const methods = sync.data.provider_auth[provider.id] ?? [
             {
               type: "api",

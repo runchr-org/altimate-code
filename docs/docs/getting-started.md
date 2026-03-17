@@ -46,7 +46,35 @@ The TUI launches with an interactive terminal. On first run, use the `/discover`
 
 You can also configure connections manually — see [Warehouse connections](#warehouse-connections) below.
 
-To set up your LLM provider, use the `/connect` command.
+### Connecting an LLM provider
+
+Run `/connect` in the TUI to set up your LLM provider. You'll see a list of popular providers — select one and follow the prompts:
+
+- **Altimate Code Zen** (Recommended) — single API key for all top coding models at the lowest prices. Get a key at `https://altimate.ai/zen`
+- **OpenAI** — ChatGPT Plus/Pro subscription or API key
+- **Anthropic** — API key from `console.anthropic.com`
+- **Google** — API key from Google AI Studio
+- **Altimate** — connect to your Altimate platform instance (see below)
+
+You can switch providers at any time by running `/connect` again.
+
+### Connecting to Altimate
+
+If you have an Altimate platform account, create `~/.altimate/altimate.json` with your credentials:
+
+```json
+{
+  "altimateInstanceName": "your-instance",
+  "altimateApiKey": "your-api-key",
+  "altimateUrl": "https://api.myaltimate.com"
+}
+```
+
+- **Instance Name** — the subdomain from your Altimate dashboard URL (e.g. `acme` from `https://acme.app.myaltimate.com`)
+- **API Key** — go to **Settings > API Keys** in your Altimate dashboard and click **Copy**
+- **URL** — matches your dashboard domain: if you access `https://<instance>.app.myaltimate.com`, use `https://api.myaltimate.com`; if `https://<instance>.app.getaltimate.com`, use `https://api.getaltimate.com`
+
+Then run `/connect` and select **Altimate** to start using it as your model.
 
 ## Configuration
 
