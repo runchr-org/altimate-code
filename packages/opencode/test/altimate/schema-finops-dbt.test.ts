@@ -390,10 +390,14 @@ describe("FinOps: regression #203 — WAREHOUSE_LOAD_HISTORY has no warehouse_si
     expect(sql).toContain("GROUP BY warehouse_name")
   })
 
-  test("SNOWFLAKE_SIZING_SQL still selects warehouse_size (QUERY_HISTORY has it)", () => {
+  test("SNOWFLAKE_SIZING_SQL no longer selects warehouse_size (sourced from SHOW WAREHOUSES now)", () => {
     const sql = AdvisorTemplates.buildSizingSql("snowflake", 14)!
-    // QUERY_HISTORY does have warehouse_size — this is the correct source
-    expect(sql).toMatch(/warehouse_size/)
+    expect(sql).not.toContain("warehouse_size")
+    expect(sql).toContain("QUERY_HISTORY")
+  })
+
+  test("SNOWFLAKE_SHOW_WAREHOUSES is just SHOW WAREHOUSES", () => {
+    expect(AdvisorTemplates.SNOWFLAKE_SHOW_WAREHOUSES).toBe("SHOW WAREHOUSES")
   })
 })
 
