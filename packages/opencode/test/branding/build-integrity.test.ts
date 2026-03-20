@@ -338,7 +338,50 @@ describe("Bundle Completeness", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 8. Install Script
+// 8. Graceful Native Binding Degradation
+// ---------------------------------------------------------------------------
+
+// altimate_change start — CI guard: core-dependent modules must be try/catch wrapped
+describe("Graceful Native Binding Degradation", () => {
+  const nativeIndex = readFileSync(
+    join(repoRoot, "packages/opencode/src/altimate/native/index.ts"),
+    "utf-8",
+  )
+
+  test("native/index.ts has isNativeBindingError helper", () => {
+    expect(nativeIndex).toContain("isNativeBindingError")
+  })
+
+  test("altimate-core import is wrapped in try/catch", () => {
+    // The altimate-core import must be inside a try block
+    expect(nativeIndex).toMatch(/try\s*\{[^}]*import\(["']\.\/altimate-core["']\)/)
+  })
+
+  const coreDepModules = ["sql/register", "schema/register", "dbt/register", "local/register"]
+
+  for (const mod of coreDepModules) {
+    test(`${mod} import is wrapped in try/catch (not bare await)`, () => {
+      // Each core-dependent module should appear inside the coreDependent array or
+      // a try/catch, NOT as a bare `await import("./module")`.
+      const barePattern = new RegExp(`^\\s*await import\\(["']\\.\\/${mod}["']\\)`, "m")
+      expect(nativeIndex).not.toMatch(barePattern)
+      // Must still be referenced somewhere in the file
+      expect(nativeIndex).toContain(mod)
+    })
+  }
+
+  const safeMods = ["connections/register", "finops/register"]
+
+  for (const mod of safeMods) {
+    test(`${mod} is imported (does not depend on altimate-core)`, () => {
+      expect(nativeIndex).toContain(mod)
+    })
+  }
+})
+// altimate_change end
+
+// ---------------------------------------------------------------------------
+// 9. Install Script
 // ---------------------------------------------------------------------------
 
 describe("Install Script", () => {
