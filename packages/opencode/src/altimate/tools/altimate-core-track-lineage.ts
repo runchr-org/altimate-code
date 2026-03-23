@@ -18,11 +18,13 @@ export const AltimateCoreTrackLineageTool = Tool.define("altimate_core_track_lin
         schema_context: args.schema_context,
       })
       const data = result.data as Record<string, any>
-      const edgeCount = data.edges?.length ?? 0
+      // LineageResult has queries[].edges, not root-level edges
+      const allEdges = extractAllEdges(data)
+      const edgeCount = allEdges.length
       return {
         title: `Track Lineage: ${edgeCount} edge(s) across ${args.queries.length} queries`,
         metadata: { success: result.success, edge_count: edgeCount },
-        output: formatTrackLineage(data),
+        output: formatTrackLineage(data, allEdges),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -31,12 +33,64 @@ export const AltimateCoreTrackLineageTool = Tool.define("altimate_core_track_lin
   },
 })
 
-function formatTrackLineage(data: Record<string, any>): string {
+/**
+ * Extract all edges from LineageResult's nested queries[].edges structure.
+ */
+function extractAllEdges(data: Record<string, any>): Array<Record<string, any>> {
+  // Try root-level edges first (in case format changes)
+  if (data.edges?.length) return data.edges
+
+  // Extract from queries[].edges (LineageResult structure)
+  const allEdges: Array<Record<string, any>> = []
+  if (Array.isArray(data.queries)) {
+    for (const q of data.queries) {
+      for (const edge of q.edges ?? []) {
+        allEdges.push(edge)
+      }
+    }
+  }
+
+  // Also include impact_map entries as cross-query edges
+  if (Array.isArray(data.impact_map)) {
+    for (const entry of data.impact_map) {
+      const src = entry.source
+      for (const affected of entry.affected ?? []) {
+        allEdges.push({
+          source: src,
+          target: affected,
+          transform_type: "cross_query",
+        })
+      }
+    }
+  }
+
+  return allEdges
+}
+
+function formatEdgeRef(ref: any): string {
+  if (typeof ref === "string") return ref
+  if (ref?.table && ref?.column) return `${ref.table}.${ref.column}`
+  return JSON.stringify(ref)
+}
+
+function formatTrackLineage(data: Record<string, any>, allEdges: Array<Record<string, any>>): string {
   if (data.error) return `Error: ${data.error}`
-  if (!data.edges?.length) return "No lineage edges found across queries."
-  const lines = ["Lineage graph:\n"]
-  for (const edge of data.edges) {
-    lines.push(`  ${edge.source} -> ${edge.target}${edge.transform ? ` (${edge.transform})` : ""}`)
+  if (allEdges.length === 0) return "No lineage edges found across queries."
+
+  const lines: string[] = []
+
+  // Show dependency order if available
+  if (data.dependency_order?.length) {
+    lines.push(`Dependency order: ${data.dependency_order.join(" → ")}`)
+    lines.push("")
+  }
+
+  lines.push("Lineage graph:\n")
+  for (const edge of allEdges) {
+    const src = formatEdgeRef(edge.source)
+    const tgt = formatEdgeRef(edge.target)
+    const transform = edge.transform_type ?? edge.transform ?? ""
+    lines.push(`  ${src} -> ${tgt}${transform ? ` (${transform})` : ""}`)
   }
   return lines.join("\n")
 }
