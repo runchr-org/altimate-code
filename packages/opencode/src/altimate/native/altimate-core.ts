@@ -573,12 +573,54 @@ register("altimate_core.grade", async (params) => {
   }
 })
 
-// 17. altimate_core.classify_pii
+// 17. altimate_core.classify_pii — with credit card pattern augmentation
 register("altimate_core.classify_pii", async (params) => {
   try {
     const schema = schemaOrEmpty(params.schema_path, params.schema_context)
     const raw = core.classifyPii(schema)
-    return ok(true, toData(raw))
+    const data = toData(raw)
+
+    // Augment: add credit card patterns that Rust PII classifier misses
+    const creditCardPatterns = [
+      /credit.?card/i, /card.?number/i, /cc.?num/i, /card.?no/i,
+      /card.?last.?four/i, /last.?four/i, /card.?expir/i, /expiry.?date/i,
+      /cvv/i, /cvc/i, /card.?holder/i, /cardholder/i, /pan(?:_|\b)/i,
+    ]
+
+    const columns = (data.columns as any[]) ?? []
+    const existingCols = new Set(columns.map((c: any) => `${c.table}.${c.column}`))
+
+    // Scan schema tables for credit card column patterns
+    const schemaJson = schema.toJson()
+    if (schemaJson?.tables) {
+      for (const [tableName, tableDef] of Object.entries(schemaJson.tables)) {
+        const table = tableDef as any
+        for (const col of table.columns ?? []) {
+          const colKey = `${tableName}.${col.name}`
+          if (existingCols.has(colKey)) continue
+
+          const isCreditCard = creditCardPatterns.some((p) => p.test(col.name))
+          if (isCreditCard) {
+            columns.push({
+              table: tableName,
+              column: col.name,
+              classification: "Financial",
+              confidence: 0.9,
+              detection_method: "column_name_pattern",
+              suggested_masking: "hash",
+            })
+            existingCols.add(colKey)
+          }
+        }
+      }
+    }
+
+    data.columns = columns
+    data.pii_count = columns.filter((c: any) =>
+      c.classification !== "None" && c.confidence > 0,
+    ).length
+
+    return ok(true, data)
   } catch (e) {
     return fail(e)
   }
