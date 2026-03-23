@@ -326,29 +326,66 @@ register("sql.diff", async (params) => {
       : null
     const compare = compareRaw ? JSON.parse(JSON.stringify(compareRaw)) : null
 
-    // Simple line-based diff
+    // Token-aware diff: normalize whitespace and compare tokens
+    const normalizeForCompare = (s: string) => s.replace(/\s+/g, " ").trim()
+    const tokensA = normalizeForCompare(sqlA)
+    const tokensB = normalizeForCompare(sqlB)
+
+    // Line-based diff for display
     const linesA = sqlA.split("\n")
     const linesB = sqlB.split("\n")
     const diffLines: string[] = []
+    let additions = 0
+    let deletions = 0
     const maxLen = Math.max(linesA.length, linesB.length)
     for (let i = 0; i < maxLen; i++) {
       const a = linesA[i] ?? ""
       const b = linesB[i] ?? ""
       if (a !== b) {
-        if (a) diffLines.push(`- ${a}`)
-        if (b) diffLines.push(`+ ${b}`)
+        if (a) { diffLines.push(`- ${a}`); deletions++ }
+        if (b) { diffLines.push(`+ ${b}`); additions++ }
+      } else if (a) {
+        diffLines.push(`  ${a}`)
       }
     }
 
+    // If both queries are on a single line, do a token-level comparison
+    if (diffLines.length === 0 && tokensA !== tokensB) {
+      diffLines.push(`- ${sqlA}`)
+      diffLines.push(`+ ${sqlB}`)
+      additions = 1
+      deletions = 1
+    }
+
+    const hasChanges = tokensA !== tokensB
+    const changeCount = additions + deletions
+
+    // Compute similarity ratio (Dice coefficient on character bigrams)
+    const bigrams = (s: string): Set<string> => {
+      const set = new Set<string>()
+      for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2))
+      return set
+    }
+    const bA = bigrams(tokensA)
+    const bB = bigrams(tokensB)
+    let intersection = 0
+    for (const b of bA) { if (bB.has(b)) intersection++ }
+    const similarity = bA.size + bB.size > 0
+      ? (2 * intersection) / (bA.size + bB.size)
+      : 1.0
+
     return {
       success: true,
-      diff: diffLines.join("\n"),
-      equivalent: compare?.equivalent ?? false,
-      equivalence_confidence: compare?.confidence ?? 0,
-      differences: compare?.differences ?? [],
+      has_changes: hasChanges,
+      unified_diff: diffLines.join("\n"),
+      additions,
+      deletions,
+      change_count: changeCount,
+      similarity,
+      changes: compare?.differences ?? [],
     }
   } catch (e) {
-    return { success: false, diff: "", equivalent: false, equivalence_confidence: 0, differences: [], error: String(e) }
+    return { success: false, has_changes: false, unified_diff: "", additions: 0, deletions: 0, change_count: 0, similarity: 0, changes: [], error: String(e) }
   }
 })
 
