@@ -18,9 +18,11 @@ export const AltimateCoreCompareTool = Tool.define("altimate_core_compare", {
         dialect: args.dialect ?? "",
       })
       const data = result.data as Record<string, any>
-      const diffCount = data.differences?.length ?? 0
+      const diffs = data.diffs ?? data.differences ?? []
+      const diffCount = diffs.length
+      const isIdentical = data.identical ?? (diffCount === 0)
       return {
-        title: `Compare: ${diffCount === 0 ? "IDENTICAL" : `${diffCount} difference(s)`}`,
+        title: `Compare: ${isIdentical ? "IDENTICAL" : `${diffCount} difference(s)`}`,
         metadata: { success: result.success, difference_count: diffCount },
         output: formatCompare(data),
       }
@@ -33,10 +35,13 @@ export const AltimateCoreCompareTool = Tool.define("altimate_core_compare", {
 
 function formatCompare(data: Record<string, any>): string {
   if (data.error) return `Error: ${data.error}`
-  if (!data.differences?.length) return "Queries are structurally identical."
-  const lines = ["Structural differences:\n"]
-  for (const d of data.differences) {
-    lines.push(`  [${d.type ?? "change"}] ${d.description ?? d.message ?? d}`)
+  // CompareResult uses "diffs" field, not "differences"
+  const diffs = data.diffs ?? data.differences ?? []
+  const isIdentical = data.identical ?? (diffs.length === 0)
+  if (isIdentical && diffs.length === 0) return "Queries are structurally identical."
+  const lines = [`Structural differences (${diffs.length}):\n`]
+  for (const d of diffs) {
+    lines.push(`  [${d.change_type ?? d.type ?? "change"}] ${d.description ?? d.message ?? d}`)
   }
   return lines.join("\n")
 }
