@@ -386,12 +386,35 @@ register("altimate_core.policy", async (params) => {
   }
 })
 
-// 9. altimate_core.semantics
+// 9. altimate_core.semantics — with implicit cross join detection
 register("altimate_core.semantics", async (params) => {
   try {
     const schema = schemaOrEmpty(params.schema_path, params.schema_context)
     const raw = await core.checkSemantics(params.sql, schema)
     const data = toData(raw)
+
+    // Augment with TypeScript-level detection for comma-joins (implicit cross joins)
+    const findings = (data.findings as any[]) ?? []
+    const commaJoinPattern = /\bFROM\b\s+(\w+)\s+\w*\s*,\s*(\w+)/gi
+    const match = commaJoinPattern.exec(params.sql)
+    if (match) {
+      const hasCommaJoinFinding = findings.some(
+        (f) => f.rule === "implicit_cross_join" || f.rule === "comma_join",
+      )
+      if (!hasCommaJoinFinding) {
+        findings.push({
+          rule: "implicit_cross_join",
+          severity: "warning",
+          message: `Implicit cross join detected: comma-separated tables in FROM clause (${match[1]}, ${match[2]}). Use explicit JOIN syntax for clarity.`,
+          explanation: "Comma-separated tables in the FROM clause create an implicit cross join. While a WHERE clause may filter the result, explicit JOIN...ON syntax is preferred for readability and to avoid accidental cartesian products.",
+          suggestion: "Rewrite using explicit JOIN syntax: FROM table1 JOIN table2 ON ...",
+          confidence: 0.8,
+        })
+        data.findings = findings
+        if (findings.length > 0) data.valid = false
+      }
+    }
+
     return ok(data.valid !== false, data)
   } catch (e) {
     return fail(e)
