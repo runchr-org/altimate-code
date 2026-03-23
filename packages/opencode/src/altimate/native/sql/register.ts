@@ -142,13 +142,25 @@ register("sql.optimize", async (params) => {
     const rewrite = JSON.parse(JSON.stringify(rewriteRaw))
     const lint = JSON.parse(JSON.stringify(lintRaw))
 
-    const suggestions: SqlOptimizeSuggestion[] = (rewrite.suggestions ?? []).map((s: any) => ({
-      type: "REWRITE",
-      description: s.explanation ?? s.rule ?? "",
-      before: params.sql,
-      after: s.rewritten_sql,
-      impact: s.confidence > 0.7 ? "high" : s.confidence > 0.4 ? "medium" : "low",
-    }))
+    // TypeScript-level non-sargable rewrites
+    const tsRewrites = detectNonSargableRewrites(params.sql)
+
+    const suggestions: SqlOptimizeSuggestion[] = [
+      ...(rewrite.suggestions ?? []).map((s: any) => ({
+        type: "REWRITE",
+        description: s.explanation ?? s.rule ?? "",
+        before: params.sql,
+        after: s.rewritten_sql,
+        impact: s.confidence > 0.7 ? "high" : s.confidence > 0.4 ? "medium" : "low",
+      })),
+      ...tsRewrites.map((r) => ({
+        type: "REWRITE",
+        description: r.explanation,
+        before: r.original_fragment,
+        after: r.rewritten_fragment,
+        impact: r.confidence > 0.7 ? "high" : r.confidence > 0.4 ? "medium" : "low",
+      })),
+    ]
 
     const antiPatterns = (lint.findings ?? []).map((f: any) => ({
       type: f.rule ?? "lint",
@@ -159,7 +171,7 @@ register("sql.optimize", async (params) => {
       confidence: "high",
     }))
 
-    const bestRewrite = rewrite.suggestions?.[0]?.rewritten_sql
+    const bestRewrite = rewrite.suggestions?.[0]?.rewritten_sql ?? tsRewrites[0]?.rewritten_sql
 
     return {
       success: true,
