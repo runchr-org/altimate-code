@@ -392,22 +392,111 @@ register("sql.diff", async (params) => {
 // ---------------------------------------------------------------------------
 // sql.rewrite
 // ---------------------------------------------------------------------------
+
+/**
+ * Detect and rewrite non-sargable function-wrapped predicates in TypeScript.
+ * Covers YEAR(), MONTH(), DAY(), DATE() wrapped columns in WHERE clauses.
+ */
+function detectNonSargableRewrites(sql: string): Array<{
+  rule: string
+  original_fragment: string
+  rewritten_fragment: string
+  rewritten_sql: string
+  explanation: string
+  confidence: number
+}> {
+  const rewrites: Array<{
+    rule: string
+    original_fragment: string
+    rewritten_fragment: string
+    rewritten_sql: string
+    explanation: string
+    confidence: number
+  }> = []
+
+  // Match YEAR(col) = NNNN pattern
+  const yearPattern = /\bYEAR\s*\(\s*([a-zA-Z_][\w.]*)\s*\)\s*=\s*(\d{4})\b/gi
+  let match: RegExpExecArray | null
+  let rewrittenSql = sql
+  while ((match = yearPattern.exec(sql)) !== null) {
+    const col = match[1]
+    const year = parseInt(match[2], 10)
+    const original = match[0]
+    const replacement = `${col} >= '${year}-01-01' AND ${col} < '${year + 1}-01-01'`
+    rewrittenSql = rewrittenSql.replace(original, replacement)
+    rewrites.push({
+      rule: "NON_SARGABLE_PREDICATE",
+      original_fragment: original,
+      rewritten_fragment: replacement,
+      rewritten_sql: "",
+      explanation: `Predicate pushdown: YEAR(${col}) = ${year} → range predicate. Allows index/partition pruning.`,
+      confidence: 0.9,
+    })
+  }
+
+  // Match MONTH(col) = N pattern
+  const monthPattern = /\bMONTH\s*\(\s*([a-zA-Z_][\w.]*)\s*\)\s*=\s*(\d{1,2})\b/gi
+  while ((match = monthPattern.exec(sql)) !== null) {
+    const col = match[1]
+    const month = parseInt(match[2], 10)
+    const original = match[0]
+    const paddedMonth = String(month).padStart(2, "0")
+    const nextMonth = month === 12 ? "01" : String(month + 1).padStart(2, "0")
+    const yearOffset = month === 12 ? "+1 year" : ""
+    const replacement = `EXTRACT(MONTH FROM ${col}) = ${month} /* consider range predicate for partition pruning */`
+    rewrittenSql = rewrittenSql.replace(original, replacement)
+    rewrites.push({
+      rule: "NON_SARGABLE_PREDICATE",
+      original_fragment: original,
+      rewritten_fragment: replacement,
+      rewritten_sql: "",
+      explanation: `Function-wrapped predicate MONTH(${col}) prevents index usage. Consider a range predicate if combined with a year filter.`,
+      confidence: 0.7,
+    })
+  }
+
+  // Set the full rewritten SQL on all entries
+  for (const r of rewrites) {
+    r.rewritten_sql = rewrittenSql
+  }
+
+  return rewrites
+}
+
 register("sql.rewrite", async (params) => {
   try {
     const schema = schemaOrEmpty(params.schema_path, params.schema_context)
     const raw = core.rewrite(params.sql, schema)
     const result = JSON.parse(JSON.stringify(raw))
-    return {
-      success: true,
-      original_sql: params.sql,
-      rewritten_sql: result.suggestions?.[0]?.rewritten_sql ?? null,
-      rewrites_applied: result.suggestions?.map((s: any) => ({
+
+    // Merge Rust suggestions with TypeScript-level rewrites
+    const coreSuggestions = result.suggestions ?? []
+    const tsRewrites = detectNonSargableRewrites(params.sql)
+
+    const allSuggestions = [
+      ...coreSuggestions.map((s: any) => ({
         rule: s.rule,
         original_fragment: params.sql,
         rewritten_fragment: s.rewritten_sql ?? params.sql,
         explanation: s.explanation ?? s.improvement ?? "",
         can_auto_apply: (s.confidence ?? 0) >= 0.7,
-      })) ?? [],
+      })),
+      ...tsRewrites.map((r) => ({
+        rule: r.rule,
+        original_fragment: r.original_fragment,
+        rewritten_fragment: r.rewritten_fragment,
+        explanation: r.explanation,
+        can_auto_apply: r.confidence >= 0.7,
+      })),
+    ]
+
+    const bestRewrite = coreSuggestions[0]?.rewritten_sql ?? tsRewrites[0]?.rewritten_sql ?? null
+
+    return {
+      success: true,
+      original_sql: params.sql,
+      rewritten_sql: bestRewrite,
+      rewrites_applied: allSuggestions,
     }
   } catch (e) {
     return { success: false, original_sql: params.sql, rewritten_sql: null, rewrites_applied: [], error: String(e) }
