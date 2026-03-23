@@ -74,6 +74,46 @@ register("sql.analyze", async (params) => {
       })
     }
 
+    // TypeScript-level rule: WINDOW_WITHOUT_PARTITION
+    // Detect window functions with empty OVER() or OVER () (no PARTITION BY)
+    const windowNoPartition = /\bOVER\s*\(\s*(?:ORDER\s+BY\b[^)]*)?(?<!\bPARTITION\s+BY\b[^)]*)\)/gi
+    const hasWindowNoPartition = windowNoPartition.test(params.sql)
+    if (hasWindowNoPartition) {
+      const hasRule = issues.some((i) =>
+        i.message.includes("WINDOW_WITHOUT_PARTITION") || i.message.includes("window") && i.message.includes("PARTITION"),
+      )
+      if (!hasRule) {
+        issues.push({
+          type: "lint",
+          severity: "warning",
+          message: "WINDOW_WITHOUT_PARTITION: Window function without PARTITION BY operates on the entire result set",
+          recommendation: "Add a PARTITION BY clause to limit the window scope, or confirm whole-table windowing is intended.",
+          confidence: "high",
+        })
+      }
+    }
+
+    // TypeScript-level rule: LARGE_IN_LIST
+    // Detect IN (...) with 20+ values
+    const inListPattern = /\bIN\s*\(([^)]+)\)/gi
+    let inMatch: RegExpExecArray | null
+    while ((inMatch = inListPattern.exec(params.sql)) !== null) {
+      const values = inMatch[1].split(",")
+      if (values.length >= 20) {
+        const hasRule = issues.some((i) => i.message.includes("LARGE_IN_LIST"))
+        if (!hasRule) {
+          issues.push({
+            type: "lint",
+            severity: "info",
+            message: `LARGE_IN_LIST: IN clause contains ${values.length} values. Consider using a CTE with VALUES or a temporary table for better readability and performance.`,
+            recommendation: "Replace large IN lists with a CTE: WITH vals AS (SELECT * FROM VALUES (...)) SELECT ... WHERE col IN (SELECT * FROM vals)",
+            confidence: "high",
+          })
+          break // Only report once
+        }
+      }
+    }
+
     return {
       success: issues.length === 0,
       issues,
