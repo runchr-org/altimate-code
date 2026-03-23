@@ -124,6 +124,87 @@ export function postprocessQualify(sql: string): string {
 const QUALIFY_TARGETS = new Set(["databricks", "spark", "trino"])
 
 // ---------------------------------------------------------------------------
+// SQL keyword fuzzy correction
+// ---------------------------------------------------------------------------
+
+const SQL_KEYWORDS = [
+  "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER",
+  "FULL", "CROSS", "ON", "AND", "OR", "NOT", "IN", "BETWEEN", "LIKE",
+  "IS", "NULL", "AS", "ORDER", "BY", "GROUP", "HAVING", "LIMIT",
+  "OFFSET", "UNION", "ALL", "DISTINCT", "INSERT", "INTO", "VALUES",
+  "UPDATE", "SET", "DELETE", "CREATE", "TABLE", "ALTER", "DROP",
+  "INDEX", "VIEW", "CASE", "WHEN", "THEN", "ELSE", "END", "EXISTS",
+  "WITH", "OVER", "PARTITION", "WINDOW", "ROWS", "RANGE", "UNBOUNDED",
+  "PRECEDING", "FOLLOWING", "CURRENT", "ROW", "CAST", "COALESCE",
+  "NULLIF", "COUNT", "SUM", "AVG", "MIN", "MAX", "HAVING", "ASC",
+  "DESC", "TRUE", "FALSE", "PRIMARY", "KEY", "FOREIGN", "REFERENCES",
+  "CONSTRAINT", "DEFAULT", "CHECK", "UNIQUE", "TRIGGER", "PROCEDURE",
+  "FUNCTION", "RETURN", "RETURNS", "BEGIN", "DECLARE", "IF", "WHILE",
+  "FOR", "EACH", "AFTER", "BEFORE", "INSTEAD", "OF", "EXECUTE",
+  "GRANT", "REVOKE", "COMMIT", "ROLLBACK", "SAVEPOINT", "TRUNCATE",
+  "MERGE", "USING", "MATCHED", "QUALIFY", "EXCEPT", "INTERSECT",
+]
+
+/**
+ * Levenshtein distance between two strings.
+ */
+function levenshtein(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[m][n]
+}
+
+/**
+ * Pre-process SQL to fix obvious keyword typos before passing to the Rust fix engine.
+ * Returns the corrected SQL and a list of corrections made.
+ */
+export function fixKeywordTypos(sql: string): { sql: string; corrections: string[] } {
+  const corrections: string[] = []
+  // Tokenize by splitting on whitespace and punctuation boundaries
+  const result = sql.replace(/\b([A-Za-z_]\w*)\b/g, (match) => {
+    const upper = match.toUpperCase()
+    // Skip if it's already a valid keyword
+    if (SQL_KEYWORDS.includes(upper)) return match
+    // Skip if it looks like an identifier (lowercase, mixed case with underscores)
+    if (match.includes("_") || (match[0] === match[0].toLowerCase() && match.length > 3)) return match
+
+    // Only try to fix short all-caps or Title-case tokens that look like keyword typos
+    if (match.length < 3 || match.length > 12) return match
+
+    // Find closest keyword by Levenshtein distance
+    let bestKeyword = ""
+    let bestDist = Infinity
+    for (const kw of SQL_KEYWORDS) {
+      if (Math.abs(kw.length - upper.length) > 2) continue
+      const dist = levenshtein(upper, kw)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestKeyword = kw
+      }
+    }
+
+    // Accept if edit distance is 1-2 and the token is short enough relative to keyword
+    const maxDist = upper.length <= 4 ? 1 : 2
+    if (bestDist > 0 && bestDist <= maxDist && bestKeyword) {
+      corrections.push(`${match} → ${bestKeyword}`)
+      return bestKeyword
+    }
+    return match
+  })
+  return { sql: result, corrections }
+}
+
+// ---------------------------------------------------------------------------
 // Handler registrations
 // ---------------------------------------------------------------------------
 
@@ -237,16 +318,56 @@ register("altimate_core.check", async (params) => {
   }
 })
 
-// 7. altimate_core.fix
+// 7. altimate_core.fix — with keyword typo correction
 register("altimate_core.fix", async (params) => {
   try {
+    // Pre-fix keyword typos before passing to Rust
+    const { sql: preprocessed, corrections } = fixKeywordTypos(params.sql)
+
     const schema = schemaOrEmpty(params.schema_path, params.schema_context)
     const raw = await core.fix(
-      params.sql,
+      preprocessed,
       schema,
       params.max_iterations ?? undefined,
     )
     const data = toData(raw)
+
+    // If we fixed keyword typos and Rust didn't change anything further,
+    // report the keyword fixes as the result
+    if (corrections.length > 0 && !data.fixed && preprocessed !== params.sql) {
+      return ok(true, {
+        ...data,
+        fixed: true,
+        original_sql: params.sql,
+        fixed_sql: data.fixed_sql ?? preprocessed,
+        fixes_applied: [
+          ...(data.fixes_applied as any[] ?? []),
+          ...corrections.map((c) => ({
+            action: "replace_keyword",
+            original: c.split(" → ")[0],
+            replacement: c.split(" → ")[1],
+            confidence: 0.95,
+            explanation: `Fixed keyword typo: ${c}`,
+          })),
+        ],
+      })
+    }
+
+    // If Rust fixed it, ensure we preserve the keyword corrections too
+    if (corrections.length > 0 && data.fixed) {
+      data.original_sql = params.sql
+      data.fixes_applied = [
+        ...corrections.map((c) => ({
+          action: "replace_keyword",
+          original: c.split(" → ")[0],
+          replacement: c.split(" → ")[1],
+          confidence: 0.95,
+          explanation: `Fixed keyword typo: ${c}`,
+        })),
+        ...(data.fixes_applied as any[] ?? []),
+      ]
+    }
+
     return ok(data.fixed !== false, data)
   } catch (e) {
     return fail(e)
