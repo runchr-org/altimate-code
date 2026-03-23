@@ -37,11 +37,22 @@ function formatCorrect(data: Record<string, any>): string {
     lines.push("Corrected SQL:")
     lines.push(data.corrected_sql)
   }
-  if (data.iterations) lines.push(`\nIterations: ${data.iterations}`)
+  // iterations is CorrectionIteration[] — serialize properly
+  if (data.iterations != null) {
+    if (Array.isArray(data.iterations)) {
+      lines.push(`\nIterations: ${data.iterations.length}`)
+      for (const iter of data.iterations) {
+        const desc = iter.fix_description ?? iter.result ?? "correction step"
+        lines.push(`  ${iter.iteration ?? "-"}. ${desc}`)
+      }
+    } else if (typeof data.iterations === "number") {
+      lines.push(`\nIterations: ${data.iterations}`)
+    }
+  }
   if (data.changes?.length) {
     lines.push("\nCorrections applied:")
     for (const c of data.changes) {
-      lines.push(`  - ${c.description ?? c}`)
+      lines.push(`  - ${typeof c === "string" ? c : c.description ?? c.fix_description ?? JSON.stringify(c)}`)
     }
   }
   if (!data.corrected_sql && !data.changes?.length) {

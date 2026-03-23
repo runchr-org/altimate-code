@@ -460,12 +460,32 @@ register("altimate_core.rewrite", async (params) => {
   }
 })
 
-// 15. altimate_core.correct
+// 15. altimate_core.correct — with keyword typo correction
 register("altimate_core.correct", async (params) => {
   try {
+    // Pre-fix keyword typos before passing to Rust
+    const { sql: preprocessed, corrections } = fixKeywordTypos(params.sql)
+
     const schema = schemaOrEmpty(params.schema_path, params.schema_context)
-    const raw = await core.correct(params.sql, schema)
+    const raw = await core.correct(preprocessed, schema)
     const data = toData(raw)
+
+    // If we fixed keyword typos, merge that info
+    if (corrections.length > 0) {
+      data.original_sql = params.sql
+      if (data.status === "unfixable" && preprocessed !== params.sql) {
+        // Rust couldn't fix further, but keyword corrections succeeded
+        data.status = corrections.length > 0 ? "fixed" : data.status
+        data.corrected_sql = data.corrected_sql ?? preprocessed
+      }
+      data.changes = [
+        ...corrections.map((c) => ({
+          description: `Fixed keyword typo: ${c}`,
+        })),
+        ...((data.changes as any[]) ?? []),
+      ]
+    }
+
     return ok(data.status !== "unfixable", data)
   } catch (e) {
     return fail(e)
