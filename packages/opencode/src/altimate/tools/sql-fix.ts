@@ -45,7 +45,7 @@ function formatFix(result: SqlFixResult): string {
   lines.push(`Error: ${result.error_message}`)
   lines.push("")
 
-  if (result.fixed_sql) {
+  if (result.success && result.fixed_sql && result.fixed_sql !== result.original_sql) {
     lines.push("=== Auto-Fixed SQL ===")
     lines.push(result.fixed_sql)
     lines.push("")
