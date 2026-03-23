@@ -612,14 +612,109 @@ register("sql.schema_diff", async (params) => {
     const raw = core.diffSchemas(oldSchema, newSchema)
     const result = JSON.parse(JSON.stringify(raw))
 
-    const changes = result.changes ?? []
-    const hasBreaking = changes.some((c: any) => c.severity === "breaking")
+    // Transform SchemaChange tagged union into ColumnChange format
+    const rawChanges = result.changes ?? []
+    const changes: Array<{
+      column: string
+      change_type: string
+      severity: string
+      message: string
+      old_type?: string
+      new_type?: string
+      new_name?: string
+    }> = []
+
+    let dropped = 0, added = 0, typeChanged = 0, renamed = 0
+
+    for (const c of rawChanges) {
+      switch (c.type) {
+        case "column_removed":
+          dropped++
+          changes.push({
+            column: `${c.table}.${c.column}`,
+            change_type: "DROPPED",
+            severity: "breaking",
+            message: `Column '${c.table}.${c.column}' was removed`,
+          })
+          break
+        case "column_added":
+          added++
+          changes.push({
+            column: `${c.table}.${c.column}`,
+            change_type: "ADDED",
+            severity: "info",
+            message: `Column '${c.table}.${c.column}' was added (${c.data_type})`,
+          })
+          break
+        case "column_type_changed":
+          typeChanged++
+          changes.push({
+            column: `${c.table}.${c.column}`,
+            change_type: "TYPE_CHANGED",
+            severity: "breaking",
+            message: `Column '${c.table}.${c.column}' type changed: ${c.old_type} → ${c.new_type}`,
+            old_type: c.old_type,
+            new_type: c.new_type,
+          })
+          break
+        case "nullability_changed":
+          changes.push({
+            column: `${c.table}.${c.column}`,
+            change_type: "NULLABILITY_CHANGED",
+            severity: c.new_nullable ? "info" : "warning",
+            message: `Column '${c.table}.${c.column}' nullability changed: ${c.old_nullable ? "nullable" : "not null"} → ${c.new_nullable ? "nullable" : "not null"}`,
+          })
+          break
+        case "table_added":
+          added++
+          changes.push({
+            column: c.table,
+            change_type: "TABLE_ADDED",
+            severity: "info",
+            message: `Table '${c.table}' was added`,
+          })
+          break
+        case "table_removed":
+          dropped++
+          changes.push({
+            column: c.table,
+            change_type: "TABLE_REMOVED",
+            severity: "breaking",
+            message: `Table '${c.table}' was removed`,
+          })
+          break
+        default:
+          changes.push({
+            column: c.table ?? "",
+            change_type: c.type ?? "UNKNOWN",
+            severity: "warning",
+            message: c.description ?? JSON.stringify(c),
+          })
+      }
+    }
+
+    const hasBreaking = changes.some((c) => c.severity === "breaking")
+
+    // Build summary from old/new schema
+    const oldColCount = oldSchema.tableNames().reduce(
+      (sum, t) => sum + (oldSchema.columnNames(t)?.length ?? 0), 0,
+    )
+    const newColCount = newSchema.tableNames().reduce(
+      (sum, t) => sum + (newSchema.columnNames(t)?.length ?? 0), 0,
+    )
 
     return {
       success: true,
       changes,
       has_breaking_changes: hasBreaking,
-      summary: result.summary ?? {},
+      summary: {
+        old_column_count: oldColCount,
+        new_column_count: newColCount,
+        dropped,
+        added,
+        type_changed: typeChanged,
+        renamed,
+      },
       error: undefined,
     } satisfies SchemaDiffResult
   } catch (e) {
