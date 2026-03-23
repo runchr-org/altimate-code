@@ -9,7 +9,7 @@
 import * as core from "@altimateai/altimate-core"
 import { register } from "../dispatcher"
 import { schemaOrEmpty, resolveSchema } from "../schema-resolver"
-import { preprocessIff, postprocessQualify } from "../altimate-core"
+import { preprocessIff, postprocessQualify, preprocessSnowflakeToBigQuery } from "../altimate-core"
 import type {
   SqlAnalyzeResult,
   SqlAnalyzeIssue,
@@ -98,13 +98,25 @@ register("sql.analyze", async (params) => {
 // ---------------------------------------------------------------------------
 register("sql.translate", async (params) => {
   try {
-    const processed = preprocessIff(params.sql)
+    const source = params.source_dialect.toLowerCase()
+    const target = params.target_dialect.toLowerCase()
+
+    // Apply dialect-specific preprocessing before transpile
+    let processed = params.sql
+    if (source === "snowflake" && target === "bigquery") {
+      processed = preprocessSnowflakeToBigQuery(processed)
+    } else {
+      processed = preprocessIff(processed, target)
+    }
+
     const raw = core.transpile(processed, params.source_dialect, params.target_dialect)
     const result = JSON.parse(JSON.stringify(raw))
 
     let translatedSql = result.transpiled_sql?.[0] ?? ""
-    const target = params.target_dialect.toLowerCase()
-    if (["bigquery", "databricks", "spark", "trino"].includes(target)) {
+
+    // Only wrap QUALIFY for targets that don't support it natively
+    // BigQuery supports QUALIFY natively since 2021
+    if (["databricks", "spark", "trino"].includes(target)) {
       if (translatedSql.toUpperCase().includes("QUALIFY")) {
         translatedSql = postprocessQualify(translatedSql)
       }

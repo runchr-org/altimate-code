@@ -38,26 +38,69 @@ function fail(error: unknown): AltimateCoreResult {
 }
 
 // ---------------------------------------------------------------------------
-// IFF / QUALIFY transpile transforms (ported from Python guard.py)
+// Snowflake → target dialect transpile transforms
 // ---------------------------------------------------------------------------
 
 const IFF_PATTERN = /\bIFF\s*\(([^,()]+),\s*([^,()]+),\s*([^()]+)\)/gi
 
 /**
- * Iteratively convert Snowflake IFF(cond, a, b) to
- * CASE WHEN cond THEN a ELSE b END.
+ * Convert Snowflake IFF(cond, a, b) to IF(cond, a, b) for BigQuery,
+ * or CASE WHEN cond THEN a ELSE b END for other targets.
  */
-export function preprocessIff(sql: string): string {
+export function preprocessIff(sql: string, targetDialect?: string): string {
+  const target = targetDialect?.toLowerCase() ?? ""
+  const useIf = target === "bigquery"
   let current = sql
   for (let i = 0; i < 10; i++) {
-    const next = current.replace(
-      IFF_PATTERN,
-      "CASE WHEN $1 THEN $2 ELSE $3 END",
-    )
+    const next = useIf
+      ? current.replace(IFF_PATTERN, "IF($1, $2, $3)")
+      : current.replace(IFF_PATTERN, "CASE WHEN $1 THEN $2 ELSE $3 END")
     if (next === current) break
     current = next
   }
   return current
+}
+
+/**
+ * Convert Snowflake TRY_TO_NUMBER/TRY_TO_DECIMAL/TRY_TO_NUMERIC to SAFE_CAST for BigQuery.
+ */
+export function preprocessTryToNumber(sql: string): string {
+  return sql.replace(
+    /\bTRY_TO_(?:NUMBER|DECIMAL|NUMERIC)\s*\(\s*([^()]+?)\s*\)/gi,
+    "SAFE_CAST($1 AS NUMERIC)",
+  )
+}
+
+/**
+ * Convert Snowflake ARRAY_AGG(expr) WITHIN GROUP (ORDER BY ...) to
+ * ARRAY_AGG(expr ORDER BY ...) for BigQuery.
+ */
+export function preprocessArrayAggWithinGroup(sql: string): string {
+  return sql.replace(
+    /\bARRAY_AGG\s*\(\s*([^()]+?)\s*\)\s*WITHIN\s+GROUP\s*\(\s*ORDER\s+BY\s+([^()]+?)\s*\)/gi,
+    "ARRAY_AGG($1 ORDER BY $2)",
+  )
+}
+
+/**
+ * Convert Snowflake FLATTEN(input => expr) to UNNEST(expr) for BigQuery.
+ */
+export function preprocessFlatten(sql: string): string {
+  return sql.replace(
+    /\bFLATTEN\s*\(\s*(?:input\s*=>\s*)?([^()]+?)\s*\)/gi,
+    "UNNEST($1)",
+  )
+}
+
+/**
+ * Apply all Snowflake → BigQuery preprocessing transforms.
+ */
+export function preprocessSnowflakeToBigQuery(sql: string): string {
+  let result = preprocessIff(sql, "bigquery")
+  result = preprocessTryToNumber(result)
+  result = preprocessArrayAggWithinGroup(result)
+  result = preprocessFlatten(result)
+  return result
 }
 
 const QUALIFY_PATTERN =
@@ -65,6 +108,7 @@ const QUALIFY_PATTERN =
 
 /**
  * Wrap QUALIFY clause into outer SELECT for targets that lack native support.
+ * BigQuery supports QUALIFY natively, so it's excluded.
  */
 export function postprocessQualify(sql: string): string {
   const m = QUALIFY_PATTERN.exec(sql)
@@ -76,7 +120,8 @@ export function postprocessQualify(sql: string): string {
   return suffix ? `${wrapped} ${suffix}` : wrapped
 }
 
-const QUALIFY_TARGETS = new Set(["bigquery", "databricks", "spark", "trino"])
+// BigQuery supports QUALIFY natively — only wrap for dialects that don't
+const QUALIFY_TARGETS = new Set(["databricks", "spark", "trino"])
 
 // ---------------------------------------------------------------------------
 // Handler registrations
@@ -124,12 +169,21 @@ register("altimate_core.safety", async (params) => {
 // 4. altimate_core.transpile — with IFF/QUALIFY transforms
 register("altimate_core.transpile", async (params) => {
   try {
-    const processed = preprocessIff(params.sql)
+    const sourceLower = params.from_dialect.toLowerCase()
+    const targetLower = params.to_dialect.toLowerCase()
+
+    // Apply dialect-specific preprocessing
+    let processed = params.sql
+    if (sourceLower === "snowflake" && targetLower === "bigquery") {
+      processed = preprocessSnowflakeToBigQuery(processed)
+    } else {
+      processed = preprocessIff(processed, targetLower)
+    }
+
     const raw = core.transpile(processed, params.from_dialect, params.to_dialect)
     const data = toData(raw)
 
     // Post-process QUALIFY for targets that lack native support
-    const targetLower = params.to_dialect.toLowerCase()
     if (QUALIFY_TARGETS.has(targetLower)) {
       // Rust returns transpiled_sql as string[] — use first element
       const transpiled = Array.isArray(data.transpiled_sql)
