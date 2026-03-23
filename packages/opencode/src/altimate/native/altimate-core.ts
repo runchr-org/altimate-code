@@ -608,7 +608,7 @@ register("altimate_core.resolve_term", async (params) => {
   }
 })
 
-// 20. altimate_core.column_lineage
+// 20. altimate_core.column_lineage — with full depth for CTE tracing
 register("altimate_core.column_lineage", async (params) => {
   try {
     const schema = resolveSchema(params.schema_path, params.schema_context)
@@ -616,6 +616,9 @@ register("altimate_core.column_lineage", async (params) => {
       params.sql,
       params.dialect || undefined,
       schema ?? undefined,
+      params.default_database ?? undefined,
+      params.default_schema ?? undefined,
+      "full", // Ensure full depth for multi-hop CTE lineage tracing
     )
     return ok(true, toData(raw))
   } catch (e) {
