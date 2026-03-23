@@ -409,12 +409,59 @@ register("altimate_core.testgen", async (params) => {
   }
 })
 
-// 11. altimate_core.equivalence
+// 11. altimate_core.equivalence — with normalization for = vs IN
 register("altimate_core.equivalence", async (params) => {
   try {
     const schema = schemaOrEmpty(params.schema_path, params.schema_context)
+
+    // First try direct equivalence check
     const raw = await core.checkEquivalence(params.sql1, params.sql2, schema)
     const data = toData(raw)
+
+    // If Rust says "not equivalent", try normalizing = X to IN (X) and vice versa
+    if (data.equivalent === false) {
+      const normalizeEqToIn = (sql: string): string =>
+        sql.replace(
+          /(\w+)\s*=\s*('(?:[^'\\]|\\.)*'|\d+(?:\.\d+)?)\b/g,
+          "$1 IN ($2)",
+        )
+      const normalizeInToEq = (sql: string): string =>
+        sql.replace(
+          /(\w+)\s+IN\s*\(\s*('(?:[^'\\]|\\.)*'|\d+(?:\.\d+)?)\s*\)/gi,
+          "$1 = $2",
+        )
+
+      // Normalize both to IN form and re-check
+      const norm1 = normalizeEqToIn(params.sql1)
+      const norm2 = normalizeEqToIn(params.sql2)
+      if (norm1 !== params.sql1 || norm2 !== params.sql2) {
+        const retryRaw = await core.checkEquivalence(norm1, norm2, schema)
+        const retryData = toData(retryRaw)
+        if (retryData.equivalent) {
+          return ok(true, {
+            ...retryData,
+            equivalent: true,
+            normalization_applied: "= X ↔ IN (X)",
+          })
+        }
+      }
+
+      // Also try normalizing both to = form
+      const eq1 = normalizeInToEq(params.sql1)
+      const eq2 = normalizeInToEq(params.sql2)
+      if (eq1 !== params.sql1 || eq2 !== params.sql2) {
+        const retryRaw = await core.checkEquivalence(eq1, eq2, schema)
+        const retryData = toData(retryRaw)
+        if (retryData.equivalent) {
+          return ok(true, {
+            ...retryData,
+            equivalent: true,
+            normalization_applied: "IN (X) ↔ = X",
+          })
+        }
+      }
+    }
+
     return ok(data.equivalent !== false, data)
   } catch (e) {
     return fail(e)
