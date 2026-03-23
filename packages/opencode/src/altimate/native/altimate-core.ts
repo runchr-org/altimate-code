@@ -374,14 +374,72 @@ register("altimate_core.fix", async (params) => {
   }
 })
 
-// 8. altimate_core.policy
+// 8. altimate_core.policy — with DML-aware schema fallback
 register("altimate_core.policy", async (params) => {
   try {
-    const schema = schemaOrEmpty(params.schema_path, params.schema_context)
+    let schema = schemaOrEmpty(params.schema_path, params.schema_context)
+
+    // If no explicit schema provided, extract table names from SQL and build
+    // a minimal schema so DML statements (DELETE, UPDATE, INSERT, MERGE)
+    // don't fail validation before policy checks can run.
+    if (!params.schema_path && !params.schema_context) {
+      try {
+        const meta = core.extractMetadata(params.sql)
+        if (meta.tables?.length) {
+          const ddl = meta.tables
+            .map((t: string) => `CREATE TABLE ${t} (id INT);`)
+            .join("\n")
+          schema = core.Schema.fromDdl(ddl)
+        }
+      } catch {
+        // Fall back to empty schema if metadata extraction fails
+      }
+    }
+
     const raw = await core.checkPolicy(params.sql, schema, params.policy_json)
     const data = toData(raw)
     return ok(data.allowed !== false, data)
   } catch (e) {
+    // If the error is a validation error, try to extract policy-relevant info
+    // and provide a useful response instead of a raw error
+    const errStr = String(e)
+    if (errStr.includes("validation") || errStr.includes("parse")) {
+      // Parse the policy JSON to do a basic statement-type check
+      try {
+        const policy = JSON.parse(params.policy_json)
+        const rules = policy.rules ?? []
+        const violations: Array<Record<string, any>> = []
+
+        // Check forbidden_operations rules against statement type
+        for (const rule of rules) {
+          if (rule.type === "forbidden_operations" && Array.isArray(rule.operations)) {
+            const sqlUpper = params.sql.trim().toUpperCase()
+            for (const op of rule.operations) {
+              if (sqlUpper.startsWith(op.toUpperCase())) {
+                violations.push({
+                  rule: "forbidden_operations",
+                  category: "query_patterns",
+                  severity: "error",
+                  message: `${op} is a forbidden operation`,
+                  detail: { type: "blocked_statement", statement: op },
+                })
+              }
+            }
+          }
+        }
+
+        if (violations.length > 0) {
+          return ok(false, {
+            allowed: false,
+            violations,
+            warnings: [],
+            policies_evaluated: rules.length,
+          })
+        }
+      } catch {
+        // If policy parsing fails too, return the original error
+      }
+    }
     return fail(e)
   }
 })
