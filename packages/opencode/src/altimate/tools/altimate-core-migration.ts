@@ -18,9 +18,12 @@ export const AltimateCoreMigrationTool = Tool.define("altimate_core_migration", 
         dialect: args.dialect ?? "",
       })
       const data = result.data as Record<string, any>
-      const riskCount = data.risks?.length ?? 0
+      // MigrationResult uses "findings" not "risks"
+      const findings = data.findings ?? data.risks ?? []
+      const riskCount = findings.length
+      const isSafe = data.safe ?? (riskCount === 0)
       return {
-        title: `Migration: ${riskCount === 0 ? "SAFE" : `${riskCount} risk(s)`}`,
+        title: `Migration: ${isSafe ? "SAFE" : `${riskCount} risk(s)`}`,
         metadata: { success: result.success, risk_count: riskCount },
         output: formatMigration(data),
       }
@@ -33,11 +36,24 @@ export const AltimateCoreMigrationTool = Tool.define("altimate_core_migration", 
 
 function formatMigration(data: Record<string, any>): string {
   if (data.error) return `Error: ${data.error}`
-  if (!data.risks?.length) return "Migration appears safe. No risks detected."
-  const lines = ["Migration risks:\n"]
-  for (const r of data.risks) {
-    lines.push(`  [${r.severity ?? "warning"}] ${r.type}: ${r.message}`)
-    if (r.recommendation) lines.push(`    Recommendation: ${r.recommendation}`)
+  // MigrationResult uses "findings" with MigrationFinding shape:
+  // { risk: MigrationRisk, operation: string, message: string, mitigation?: string, rollback_sql?: string }
+  const findings = data.findings ?? data.risks ?? []
+  if (!findings.length) return "Migration appears safe. No risks detected."
+
+  const lines: string[] = []
+  if (data.overall_risk) lines.push(`Overall risk: ${data.overall_risk}`)
+  lines.push(`\nMigration risks (${findings.length}):\n`)
+  for (const r of findings) {
+    const severity = r.risk ?? r.severity ?? "warning"
+    const operation = r.operation ?? r.type ?? "change"
+    lines.push(`  [${severity.toUpperCase()}] ${operation}: ${r.message}`)
+    if (r.mitigation ?? r.recommendation) {
+      lines.push(`    Mitigation: ${r.mitigation ?? r.recommendation}`)
+    }
+    if (r.rollback_sql) {
+      lines.push(`    Rollback: ${r.rollback_sql}`)
+    }
   }
   return lines.join("\n")
 }
