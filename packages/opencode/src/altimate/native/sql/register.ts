@@ -208,18 +208,91 @@ register("sql.optimize", async (params) => {
 // ---------------------------------------------------------------------------
 // sql.format
 // ---------------------------------------------------------------------------
+
+/**
+ * Pretty-print SQL by inserting line breaks before major clauses
+ * and indenting sub-clauses. Used when core.formatSql returns single-line.
+ */
+function prettyPrintSql(sql: string, indent: number = 2): string {
+  const pad = " ".repeat(indent)
+
+  // Major clause keywords that start a new line (not indented)
+  const majorClauses = /\b(SELECT|FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION\s+ALL|UNION|INTERSECT|EXCEPT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|SET|VALUES|RETURNING)\b/gi
+
+  // Sub-clauses that should be indented
+  const subClauses = /\b(LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|JOIN|ON|AND|OR|WHEN|THEN|ELSE|END)\b/gi
+
+  // First, normalize whitespace
+  let formatted = sql.replace(/\s+/g, " ").trim()
+
+  // Break before major clauses
+  formatted = formatted.replace(majorClauses, "\n$1")
+
+  // Break before sub-clauses and indent
+  formatted = formatted.replace(subClauses, (match) => {
+    const upper = match.toUpperCase().trim()
+    // AND/OR get indented under WHERE/ON
+    if (upper === "AND" || upper === "OR") return `\n${pad}${pad}${match}`
+    // WHEN/THEN/ELSE/END for CASE expressions
+    if (["WHEN", "THEN", "ELSE", "END"].includes(upper)) return `\n${pad}${pad}${match}`
+    // JOINs get single indent
+    return `\n${match}`
+  })
+
+  // Indent SELECT column list: break after commas in SELECT clause
+  const lines = formatted.split("\n")
+  const result: string[] = []
+  let inSelect = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    if (/^SELECT\b/i.test(trimmed)) {
+      inSelect = true
+      // Split comma-separated columns onto separate lines
+      const afterSelect = trimmed.replace(/^SELECT\s+/i, "").trim()
+      if (afterSelect.includes(",")) {
+        result.push("SELECT")
+        const cols = afterSelect.split(",").map((c) => c.trim())
+        for (let i = 0; i < cols.length; i++) {
+          result.push(`${pad}${cols[i]}${i < cols.length - 1 ? "," : ""}`)
+        }
+      } else {
+        result.push(trimmed)
+      }
+      continue
+    }
+
+    if (/^(?:FROM|WHERE|GROUP|ORDER|HAVING|LIMIT|UNION|INSERT|UPDATE|DELETE|SET|VALUES)\b/i.test(trimmed)) {
+      inSelect = false
+    }
+
+    result.push(trimmed)
+  }
+
+  return result.join("\n")
+}
+
 register("sql.format", async (params) => {
   try {
     const raw = core.formatSql(params.sql, params.dialect)
     const result = JSON.parse(JSON.stringify(raw))
+    let formattedSql = result.formatted_sql ?? params.sql
+
+    // If the core formatter returned single-line SQL, apply pretty-printing
+    if (formattedSql && !formattedSql.includes("\n")) {
+      formattedSql = prettyPrintSql(formattedSql, params.indent ?? 2)
+    }
+
     return {
       success: result.success ?? true,
-      formatted_sql: result.formatted_sql ?? params.sql,
+      formatted_sql: formattedSql,
+      statement_count: result.statement_count ?? 1,
       dialect: params.dialect ?? "generic",
       error: result.error,
     }
   } catch (e) {
-    return { success: false, formatted_sql: params.sql, dialect: params.dialect ?? "generic", error: String(e) }
+    return { success: false, formatted_sql: params.sql, statement_count: 0, dialect: params.dialect ?? "generic", error: String(e) }
   }
 })
 
