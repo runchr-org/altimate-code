@@ -33,7 +33,7 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
       // there's an actual error (e.g. parse failure).
       const isRealFailure = !!result.error
       return {
-        title: `Analyze: ${result.error ? "PARSE ERROR" : `${result.issue_count} issue${result.issue_count !== 1 ? "s" : ""}`} [${result.confidence}]`,
+        title: `Analyze: ${result.error ? "ERROR" : `${result.issue_count} issue${result.issue_count !== 1 ? "s" : ""}`} [${result.confidence}]`,
         metadata: {
           success: !isRealFailure,
           issueCount: result.issue_count,
