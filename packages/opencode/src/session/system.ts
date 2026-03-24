@@ -77,8 +77,8 @@ export namespace SystemPrompt {
     // altimate_change end
 
     return [
-      "Skills provide specialized instructions and workflows for specific tasks.",
-      "Use the skill tool to load a skill when a task matches its description.",
+      "Skills provide specialized instructions, workflows, and bundled references for domain-specific tasks.",
+      "IMPORTANT: Before starting work, check if a skill matches the user's intent. If one does, load it with the skill tool first — skills contain critical context and references that significantly improve output quality.",
       // the agents seem to ingest the information about skills a bit better if we present a more verbose
       // version of them here and a less verbose version in tool description, rather than vice versa.
       // altimate_change start - use filtered skill list

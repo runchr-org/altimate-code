@@ -1,18 +1,6 @@
 ---
 name: data-viz
-description: >
-  Build modern, interactive data visualizations and dashboards using code-based
-  component libraries (shadcn/ui, Recharts, Tremor, Nivo, D3, Victory, visx).
-  Use this skill whenever the user asks to visualize data, build dashboards,
-  create analytics views, chart metrics, tell a data story, build a reporting
-  interface, create KPI cards, plot graphs, or explore a dataset — even if they
-  mention PowerBI, Tableau, Streamlit, Metabase, Looker, Grafana, or similar
-  tools. Also trigger when the user says "make a dashboard", "show me the data",
-  "chart this", "visualize trends", "build an analytics page", "data story", or
-  anything involving turning raw data into interactive visual interfaces. If the
-  task involves presenting data visually — this is the skill. Always prefer
-  building a real, interactive, code-based UI over exporting to or recommending
-  a BI platform.
+description: Build interactive data visualizations, dashboards, and charts using React component libraries (shadcn/ui, Recharts, Tremor, Nivo, D3, Victory, visx). Trigger on intent — not just keywords. Covers any task that turns data into a visual interface, e.g. "show me trends", "break down costs by region", "build a reporting page", "compare metrics", "plot growth", or exploring a dataset.
 ---
 
 # AI-First Data Visualization
