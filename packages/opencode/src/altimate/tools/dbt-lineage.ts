@@ -33,7 +33,7 @@ export const DbtLineageTool = Tool.define("dbt_lineage", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "dbt Lineage: ERROR",
-        metadata: { model_name: args.model, confidence: "unknown" },
+        metadata: { model_name: args.model, confidence: "unknown", error: msg },
         output: `Failed: ${msg}`,
       }
     }

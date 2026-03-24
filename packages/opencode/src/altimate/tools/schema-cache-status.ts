@@ -23,7 +23,7 @@ export const SchemaCacheStatusTool = Tool.define("schema_cache_status", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Schema Cache Status: ERROR",
-        metadata: { totalTables: 0, totalColumns: 0, warehouseCount: 0 },
+        metadata: { totalTables: 0, totalColumns: 0, warehouseCount: 0, error: msg },
         output: `Failed to get cache status: ${msg}\n\nEnsure the dispatcher is running.`,
       }
     }

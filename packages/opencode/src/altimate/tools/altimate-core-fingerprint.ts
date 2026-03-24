@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreFingerprintTool = Tool.define("altimate_core_fingerprint", {
   description:
-    "Compute a SHA-256 fingerprint of a schema using the Rust-based altimate-core engine. Useful for cache invalidation and change detection.",
+    "Compute a SHA-256 fingerprint of a schema. Useful for cache invalidation and change detection. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),

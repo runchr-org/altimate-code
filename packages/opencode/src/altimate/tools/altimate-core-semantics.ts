@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", {
   description:
-    "Run semantic validation rules against SQL using the Rust-based altimate-core engine. Detects logical issues like cartesian products, wrong JOIN conditions, NULL misuse, and type mismatches that syntax checking alone misses.",
+    "Run semantic validation rules against SQL. Detects logical issues like cartesian products, wrong JOIN conditions, NULL misuse, and type mismatches that syntax checking alone misses. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to validate semantically"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
@@ -19,17 +19,25 @@ export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", 
       })
       const data = result.data as Record<string, any>
       const issueCount = data.issues?.length ?? 0
+      const error = result.error ?? data.error ?? extractSemanticsErrors(data)
       return {
         title: `Semantics: ${data.valid ? "VALID" : `${issueCount} issues`}`,
-        metadata: { success: result.success, valid: data.valid, issue_count: issueCount },
-        output: formatSemantics(data),
+        metadata: { success: result.success, valid: data.valid, issue_count: issueCount, error },
+        output: error ? `Error: ${error}` : formatSemantics(data),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      return { title: "Semantics: ERROR", metadata: { success: false, valid: false, issue_count: 0 }, output: `Failed: ${msg}` }
+      return { title: "Semantics: ERROR", metadata: { success: false, valid: false, issue_count: 0, error: msg }, output: `Failed: ${msg}` }
     }
   },
 })
+
+function extractSemanticsErrors(data: Record<string, any>): string | undefined {
+  if (Array.isArray(data.validation_errors) && data.validation_errors.length > 0) {
+    return data.validation_errors.join("; ")
+  }
+  return undefined
+}
 
 function formatSemantics(data: Record<string, any>): string {
   if (data.error) return `Error: ${data.error}`

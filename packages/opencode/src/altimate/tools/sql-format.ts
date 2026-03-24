@@ -21,7 +21,7 @@ export const SqlFormatTool = Tool.define("sql_format", {
       if (!result.success) {
         return {
           title: "Format: FAILED",
-          metadata: { success: false, statement_count: 0 },
+          metadata: { success: false, statement_count: 0, error: result.error },
           output: `Failed to format SQL: ${result.error ?? "Unknown error"}`,
         }
       }
@@ -35,7 +35,7 @@ export const SqlFormatTool = Tool.define("sql_format", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Format: ERROR",
-        metadata: { success: false, statement_count: 0 },
+        metadata: { success: false, statement_count: 0, error: msg },
         output: `Failed to format SQL: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }

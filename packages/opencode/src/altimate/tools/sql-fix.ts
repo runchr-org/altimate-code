@@ -25,6 +25,7 @@ export const SqlFixTool = Tool.define("sql_fix", {
           success: result.success,
           suggestion_count: result.suggestion_count,
           has_fix: !!result.fixed_sql,
+          error: result.error,
         },
         output: formatFix(result),
       }
@@ -32,7 +33,7 @@ export const SqlFixTool = Tool.define("sql_fix", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Fix: ERROR",
-        metadata: { success: false, suggestion_count: 0, has_fix: false },
+        metadata: { success: false, suggestion_count: 0, has_fix: false, error: msg },
         output: `Failed to analyze error: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }

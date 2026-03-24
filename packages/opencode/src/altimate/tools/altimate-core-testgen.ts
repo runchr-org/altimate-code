@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreTestgenTool = Tool.define("altimate_core_testgen", {
   description:
-    "Generate automated SQL test cases using the Rust-based altimate-core engine. Produces boundary value tests, NULL handling tests, edge cases, and expected result assertions for a given SQL query.",
+    "Generate automated SQL test cases. Produces boundary value tests, NULL handling tests, edge cases, and expected result assertions for a given SQL query. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to generate tests for"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),

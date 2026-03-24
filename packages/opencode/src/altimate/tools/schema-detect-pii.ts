@@ -36,7 +36,7 @@ export const SchemaDetectPiiTool = Tool.define("schema_detect_pii", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "PII Scan: ERROR",
-        metadata: { finding_count: 0, columns_scanned: 0 },
+        metadata: { finding_count: 0, columns_scanned: 0, error: msg },
         output: `Failed to scan for PII: ${msg}`,
       }
     }

@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCorePolicyTool = Tool.define("altimate_core_policy", {
   description:
-    "Check SQL against YAML-based governance policy guardrails using the Rust-based altimate-core engine. Validates compliance with custom rules like allowed tables, forbidden operations, and data access restrictions.",
+    "Check SQL against YAML-based governance policy guardrails. Validates compliance with custom rules like allowed tables, forbidden operations, and data access restrictions. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to check against policy"),
     policy_json: z.string().describe("JSON string defining the policy rules"),

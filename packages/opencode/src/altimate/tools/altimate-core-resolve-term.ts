@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreResolveTermTool = Tool.define("altimate_core_resolve_term", {
   description:
-    "Resolve a business glossary term to schema elements using fuzzy matching via the Rust-based altimate-core engine. Maps human-readable terms like 'revenue' or 'customer' to actual table/column names.",
+    "Resolve a business glossary term to schema elements using fuzzy matching. Maps human-readable terms like 'revenue' or 'customer' to actual table/column names. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     term: z.string().describe("Business term to resolve (e.g. 'revenue', 'customer email')"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),

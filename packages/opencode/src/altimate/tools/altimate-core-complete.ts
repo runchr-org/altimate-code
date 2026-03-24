@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreCompleteTool = Tool.define("altimate_core_complete", {
   description:
-    "Get cursor-aware SQL completion suggestions using the Rust-based altimate-core engine. Returns table names, column names, functions, and keywords relevant to the cursor position.",
+    "Get cursor-aware SQL completion suggestions. Returns table names, column names, functions, and keywords relevant to the cursor position. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("Partial SQL query"),
     cursor_pos: z.number().describe("Cursor position (0-indexed character offset)"),
@@ -23,12 +23,12 @@ export const AltimateCoreCompleteTool = Tool.define("altimate_core_complete", {
       const count = data.items?.length ?? data.suggestions?.length ?? 0
       return {
         title: `Complete: ${count} suggestion(s)`,
-        metadata: { success: result.success, suggestion_count: count },
+        metadata: { success: result.success, suggestion_count: count, error: result.error ?? (data as any).error },
         output: formatComplete(data),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      return { title: "Complete: ERROR", metadata: { success: false, suggestion_count: 0 }, output: `Failed: ${msg}` }
+      return { title: "Complete: ERROR", metadata: { success: false, suggestion_count: 0, error: msg }, output: `Failed: ${msg}` }
     }
   },
 })

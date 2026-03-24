@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreClassifyPiiTool = Tool.define("altimate_core_classify_pii", {
   description:
-    "Classify PII columns in a schema using the Rust-based altimate-core engine. Identifies columns likely containing personal identifiable information by name patterns and data types.",
+    "Classify PII columns in a schema. Identifies columns likely containing personal identifiable information by name patterns and data types. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),

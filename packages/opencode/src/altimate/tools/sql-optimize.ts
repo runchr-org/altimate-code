@@ -46,7 +46,7 @@ export const SqlOptimizeTool = Tool.define("sql_optimize", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Optimize: ERROR",
-        metadata: { success: false, suggestionCount: 0, antiPatternCount: 0, hasOptimizedSql: false, confidence: "unknown" },
+        metadata: { success: false, suggestionCount: 0, antiPatternCount: 0, hasOptimizedSql: false, confidence: "unknown", error: msg },
         output: `Failed to optimize SQL: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }

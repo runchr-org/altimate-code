@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreRewriteTool = Tool.define("altimate_core_rewrite", {
   description:
-    "Suggest query optimization rewrites using the Rust-based altimate-core engine. Analyzes SQL and proposes concrete rewrites for better performance.",
+    "Suggest query optimization rewrites. Analyzes SQL and proposes concrete rewrites for better performance. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to optimize"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),

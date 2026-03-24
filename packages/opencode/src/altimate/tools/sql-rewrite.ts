@@ -45,7 +45,7 @@ export const SqlRewriteTool = Tool.define("sql_rewrite", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Rewrite: ERROR",
-        metadata: { success: false, rewriteCount: 0, autoApplyCount: 0, hasRewrittenSql: false },
+        metadata: { success: false, rewriteCount: 0, autoApplyCount: 0, hasRewrittenSql: false, error: msg },
         output: `Failed to rewrite SQL: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }

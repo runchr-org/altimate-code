@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreOptimizeContextTool = Tool.define("altimate_core_optimize_context", {
   description:
-    "Optimize schema for LLM context window using the Rust-based altimate-core engine. Applies 5-level progressive disclosure to reduce schema size while preserving essential information.",
+    "Optimize schema for LLM context window. Applies 5-level progressive disclosure to reduce schema size while preserving essential information. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),

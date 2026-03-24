@@ -24,6 +24,7 @@ export interface SqlExecuteResult {
 export interface SqlAnalyzeParams {
   sql: string
   dialect?: string
+  schema_path?: string
   schema_context?: Record<string, any>
 }
 
@@ -385,6 +386,7 @@ export interface SqlFixResult {
   error_message: string
   suggestions: SqlFixSuggestion[]
   suggestion_count: number
+  error?: string
 }
 
 // --- SQL Autocomplete ---

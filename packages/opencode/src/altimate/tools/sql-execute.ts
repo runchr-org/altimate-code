@@ -47,7 +47,7 @@ export const SqlExecuteTool = Tool.define("sql_execute", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "SQL: ERROR",
-        metadata: { rowCount: 0, truncated: false },
+        metadata: { rowCount: 0, truncated: false, error: msg },
         output: `Failed to execute SQL: ${msg}\n\nEnsure the dispatcher is running and a warehouse connection is configured.`,
       }
     }

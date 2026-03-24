@@ -11,6 +11,8 @@ import { Telemetry } from "../altimate/telemetry"
 export namespace Tool {
   interface Metadata {
     [key: string]: any
+    /** Standard error field — set by tools on failure so telemetry can extract it. */
+    error?: string
   }
 
   export interface InitContext {
@@ -49,10 +51,10 @@ export namespace Tool {
   export type InferParameters<T extends Info> = T extends Info<infer P> ? z.infer<P> : never
   export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
 
-  export function define<Parameters extends z.ZodType, Result extends Metadata>(
+  export function define<Parameters extends z.ZodType>(
     id: string,
-    init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
-  ): Info<Parameters, Result> {
+    init: Info<Parameters>["init"] | Awaited<ReturnType<Info<Parameters>["init"]>>,
+  ): Info<Parameters> {
     return {
       id,
       init: async (initCtx) => {

@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreExtractMetadataTool = Tool.define("altimate_core_extract_metadata", {
   description:
-    "Extract metadata from SQL using the Rust-based altimate-core engine. Identifies tables, columns, functions, CTEs, and other structural elements referenced in a query.",
+    "Extract metadata from SQL. Identifies tables, columns, functions, CTEs, and other structural elements referenced in a query.",
   parameters: z.object({
     sql: z.string().describe("SQL query to extract metadata from"),
     dialect: z.string().optional().describe("SQL dialect (e.g. snowflake, bigquery, postgres)"),

@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCorePruneSchemaTool = Tool.define("altimate_core_prune_schema", {
   description:
-    "Filter schema to only tables and columns referenced by a SQL query using the Rust-based altimate-core engine. Progressive schema disclosure for minimal context.",
+    "Filter schema to only tables and columns referenced by a SQL query. Progressive schema disclosure for minimal context. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to determine relevant schema for"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),

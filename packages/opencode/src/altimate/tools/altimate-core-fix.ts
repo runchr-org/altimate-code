@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreFixTool = Tool.define("altimate_core_fix", {
   description:
-    "Auto-fix SQL errors using the Rust-based altimate-core engine. Uses fuzzy matching and iterative re-validation to correct syntax errors, typos, and schema reference issues.",
+    "Auto-fix SQL errors using fuzzy matching and iterative re-validation. Corrects syntax errors, typos, and schema reference issues. IMPORTANT: Provide schema_context or schema_path — without schema, table/column references cannot be resolved or fixed.",
   parameters: z.object({
     sql: z.string().describe("SQL query to fix"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
@@ -20,17 +20,33 @@ export const AltimateCoreFixTool = Tool.define("altimate_core_fix", {
         max_iterations: args.max_iterations ?? 5,
       })
       const data = result.data as Record<string, any>
+      const error = result.error ?? data.error ?? extractFixErrors(data)
+      // post_fix_valid=true with no errors means SQL was already valid (nothing to fix)
+      const alreadyValid = data.post_fix_valid && !error
+      const success = result.success || alreadyValid
       return {
-        title: `Fix: ${data.success ? "FIXED" : "COULD NOT FIX"}`,
-        metadata: { success: result.success, fixed: !!data.fixed_sql },
-        output: formatFix(data),
+        title: `Fix: ${alreadyValid ? "ALREADY VALID" : data.fixed ? "FIXED" : "COULD NOT FIX"}`,
+        metadata: { success, fixed: !!data.fixed_sql, error },
+        output: error ? `Error: ${error}` : formatFix(data),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      return { title: "Fix: ERROR", metadata: { success: false, fixed: false }, output: `Failed: ${msg}` }
+      return { title: "Fix: ERROR", metadata: { success: false, fixed: false, error: msg }, output: `Failed: ${msg}` }
     }
   },
 })
+
+// Safety net: the native handler (register.ts) also extracts unfixable_errors into
+// result.error, but we extract here too in case the handler is updated without setting it.
+function extractFixErrors(data: Record<string, any>): string | undefined {
+  if (Array.isArray(data.unfixable_errors) && data.unfixable_errors.length > 0) {
+    return data.unfixable_errors.map((e: any) => e.error?.message ?? e.reason ?? String(e)).join("; ")
+  }
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    return data.errors.map((e: any) => e.message ?? String(e)).join("; ")
+  }
+  return undefined
+}
 
 function formatFix(data: Record<string, any>): string {
   if (data.error) return `Error: ${data.error}`

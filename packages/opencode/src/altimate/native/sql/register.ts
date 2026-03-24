@@ -215,6 +215,10 @@ register("sql.fix", async (params) => {
       fixed_sql: f.fixed_sql ?? f.rewritten_sql,
     }))
 
+    const unfixableError = !result.fixed && Array.isArray(result.unfixable_errors) && result.unfixable_errors.length > 0
+      ? result.unfixable_errors.map((e: any) => e.error?.message ?? e.reason ?? String(e)).join("; ")
+      : undefined
+
     return {
       success: result.fixed ?? true,
       original_sql: result.original_sql ?? params.sql,
@@ -222,6 +226,7 @@ register("sql.fix", async (params) => {
       error_message: params.error_message ?? "",
       suggestions,
       suggestion_count: suggestions.length,
+      ...(unfixableError && { error: unfixableError }),
     }
   } catch (e) {
     return {

@@ -40,7 +40,7 @@ export const SchemaSearchTool = Tool.define("schema_search", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Schema Search: ERROR",
-        metadata: { matchCount: 0, tableCount: 0, columnCount: 0 },
+        metadata: { matchCount: 0, tableCount: 0, columnCount: 0, error: msg },
         output: `Failed to search schema: ${msg}\n\nEnsure schema_index has been run and the dispatcher is running.`,
       }
     }

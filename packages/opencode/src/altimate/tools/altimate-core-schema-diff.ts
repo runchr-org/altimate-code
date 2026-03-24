@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreSchemaDiffTool = Tool.define("altimate_core_schema_diff", {
   description:
-    "Diff two schemas and detect breaking changes using the Rust-based altimate-core engine. Compares old vs new schema files and identifies added, removed, and modified tables/columns.",
+    "Diff two schemas and detect breaking changes. Compares old vs new schema files and identifies added, removed, and modified tables/columns.",
   parameters: z.object({
     schema1_path: z.string().optional().describe("Path to the old/baseline schema file"),
     schema2_path: z.string().optional().describe("Path to the new/changed schema file"),

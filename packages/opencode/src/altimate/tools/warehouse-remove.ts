@@ -28,7 +28,7 @@ export const WarehouseRemoveTool = Tool.define("warehouse_remove", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: `Remove '${args.name}': ERROR`,
-        metadata: { success: false },
+        metadata: { success: false, error: msg },
         output: `Failed to remove warehouse: ${msg}`,
       }
     }

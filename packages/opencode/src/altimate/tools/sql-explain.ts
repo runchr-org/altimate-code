@@ -22,21 +22,21 @@ export const SqlExplainTool = Tool.define("sql_explain", {
       if (!result.success) {
         return {
           title: "Explain: FAILED",
-          metadata: { success: false, analyzed: false, warehouse_type: result.warehouse_type ?? "unknown" },
+          metadata: { success: false, analyzed: false, warehouse_type: result.warehouse_type ?? "unknown", error: result.error },
           output: `Failed to get execution plan: ${result.error ?? "Unknown error"}`,
         }
       }
 
       return {
         title: `Explain: ${result.analyzed ? "ANALYZE" : "PLAN"} [${result.warehouse_type ?? "unknown"}]`,
-        metadata: { success: true, analyzed: result.analyzed, warehouse_type: result.warehouse_type ?? "unknown" },
+        metadata: { success: true, analyzed: result.analyzed, warehouse_type: result.warehouse_type ?? "unknown", error: result.error },
         output: formatPlan(result),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Explain: ERROR",
-        metadata: { success: false, analyzed: false, warehouse_type: "unknown" },
+        metadata: { success: false, analyzed: false, warehouse_type: "unknown", error: msg },
         output: `Failed to run EXPLAIN: ${msg}\n\nEnsure a warehouse connection is configured and the dispatcher is running.`,
       }
     }

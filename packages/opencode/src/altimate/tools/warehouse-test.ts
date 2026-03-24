@@ -28,7 +28,7 @@ export const WarehouseTestTool = Tool.define("warehouse_test", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: `Connection '${args.name}': ERROR`,
-        metadata: { connected: false },
+        metadata: { connected: false, error: msg },
         output: `Failed to test connection: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }

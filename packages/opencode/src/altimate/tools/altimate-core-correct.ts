@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreCorrectTool = Tool.define("altimate_core_correct", {
   description:
-    "Iteratively correct SQL using a propose-verify-refine loop via the Rust-based altimate-core engine. More thorough than fix — applies multiple correction rounds to produce valid SQL.",
+    "Iteratively correct SQL using a propose-verify-refine loop. More thorough than fix — applies multiple correction rounds to produce valid SQL. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to correct"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
@@ -18,17 +18,28 @@ export const AltimateCoreCorrectTool = Tool.define("altimate_core_correct", {
         schema_context: args.schema_context,
       })
       const data = result.data as Record<string, any>
+      const error = result.error ?? data.error ?? extractCorrectErrors(data)
       return {
         title: `Correct: ${data.success ? "CORRECTED" : "COULD NOT CORRECT"}`,
-        metadata: { success: result.success, iterations: data.iterations },
-        output: formatCorrect(data),
+        metadata: { success: result.success, iterations: data.iterations, error },
+        output: error ? `Error: ${error}` : formatCorrect(data),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      return { title: "Correct: ERROR", metadata: { success: false, iterations: 0 }, output: `Failed: ${msg}` }
+      return { title: "Correct: ERROR", metadata: { success: false, iterations: 0, error: msg }, output: `Failed: ${msg}` }
     }
   },
 })
+
+function extractCorrectErrors(data: Record<string, any>): string | undefined {
+  if (data.final_validation?.errors?.length > 0) {
+    return data.final_validation.errors.map((e: any) => e.message ?? String(e)).join("; ")
+  }
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    return data.errors.map((e: any) => e.message ?? String(e)).join("; ")
+  }
+  return undefined
+}
 
 function formatCorrect(data: Record<string, any>): string {
   if (data.error) return `Error: ${data.error}`

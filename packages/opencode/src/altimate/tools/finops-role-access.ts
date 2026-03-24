@@ -132,7 +132,7 @@ export const FinopsRoleGrantsTool = Tool.define("finops_role_grants", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Role Grants: ERROR",
-        metadata: { success: false, grant_count: 0 },
+        metadata: { success: false, grant_count: 0, error: msg },
         output: `Failed to query grants: ${msg}`,
       }
     }
@@ -165,7 +165,7 @@ export const FinopsRoleHierarchyTool = Tool.define("finops_role_hierarchy", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Role Hierarchy: ERROR",
-        metadata: { success: false, role_count: 0 },
+        metadata: { success: false, role_count: 0, error: msg },
         output: `Failed to query role hierarchy: ${msg}`,
       }
     }
@@ -204,7 +204,7 @@ export const FinopsUserRolesTool = Tool.define("finops_user_roles", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "User Roles: ERROR",
-        metadata: { success: false, assignment_count: 0 },
+        metadata: { success: false, assignment_count: 0, error: msg },
         output: `Failed to query user roles: ${msg}`,
       }
     }

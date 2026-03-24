@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreQueryPiiTool = Tool.define("altimate_core_query_pii", {
   description:
-    "Analyze query-level PII exposure using the Rust-based altimate-core engine. Checks if a SQL query accesses columns classified as PII and reports the exposure risk.",
+    "Analyze query-level PII exposure. Checks if a SQL query accesses columns classified as PII and reports the exposure risk. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to check for PII access"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),

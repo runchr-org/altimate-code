@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreCheckTool = Tool.define("altimate_core_check", {
   description:
-    "Run full analysis pipeline: validate + lint + safety scan + PII check using the Rust-based altimate-core engine. Single call for comprehensive SQL analysis.",
+    "Run full analysis pipeline: validate + lint + safety scan + PII check. Single call for comprehensive SQL analysis. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     sql: z.string().describe("SQL query to analyze"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),

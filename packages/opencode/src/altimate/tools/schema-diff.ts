@@ -45,7 +45,7 @@ export const SchemaDiffTool = Tool.define("schema_diff", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Schema Diff: ERROR",
-        metadata: { success: false, changeCount: 0, breakingCount: 0, hasBreakingChanges: false },
+        metadata: { success: false, changeCount: 0, breakingCount: 0, hasBreakingChanges: false, error: msg },
         output: `Failed to diff schema: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }

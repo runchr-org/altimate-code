@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreMigrationTool = Tool.define("altimate_core_migration", {
   description:
-    "Analyze DDL migration safety using the Rust-based altimate-core engine. Detects potential data loss, type narrowing, missing defaults, and other risks in schema migration statements.",
+    "Analyze DDL migration safety. Detects potential data loss, type narrowing, missing defaults, and other risks in schema migration statements.",
   parameters: z.object({
     old_ddl: z.string().describe("Original DDL (before migration)"),
     new_ddl: z.string().describe("New DDL (after migration)"),

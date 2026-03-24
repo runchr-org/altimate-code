@@ -85,7 +85,7 @@ export const FinopsWarehouseAdviceTool = Tool.define("finops_warehouse_advice", 
       if (!result.success) {
         return {
           title: "Warehouse Advice: FAILED",
-          metadata: { success: false, recommendation_count: 0 },
+          metadata: { success: false, recommendation_count: 0, error: result.error },
           output: `Failed to analyze warehouses: ${result.error ?? "Unknown error"}`,
         }
       }
@@ -103,7 +103,7 @@ export const FinopsWarehouseAdviceTool = Tool.define("finops_warehouse_advice", 
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Warehouse Advice: ERROR",
-        metadata: { success: false, recommendation_count: 0 },
+        metadata: { success: false, recommendation_count: 0, error: msg },
         output: `Failed to analyze warehouses: ${msg}`,
       }
     }

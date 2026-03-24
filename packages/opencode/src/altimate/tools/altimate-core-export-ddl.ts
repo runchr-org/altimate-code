@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreExportDdlTool = Tool.define("altimate_core_export_ddl", {
   description:
-    "Export a YAML/JSON schema as CREATE TABLE DDL statements using the Rust-based altimate-core engine.",
+    "Export a YAML/JSON schema as CREATE TABLE DDL statements. Provide schema_context or schema_path for accurate table/column resolution.",
   parameters: z.object({
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),

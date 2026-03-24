@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreCompareTool = Tool.define("altimate_core_compare", {
   description:
-    "Structurally compare two SQL queries using the Rust-based altimate-core engine. Identifies differences in table references, join conditions, filters, projections, and aggregations.",
+    "Structurally compare two SQL queries. Identifies differences in table references, join conditions, filters, projections, and aggregations.",
   parameters: z.object({
     left_sql: z.string().describe("First SQL query"),
     right_sql: z.string().describe("Second SQL query"),

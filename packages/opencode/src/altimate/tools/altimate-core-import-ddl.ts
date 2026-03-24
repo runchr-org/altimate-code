@@ -4,7 +4,7 @@ import { Dispatcher } from "../native"
 
 export const AltimateCoreImportDdlTool = Tool.define("altimate_core_import_ddl", {
   description:
-    "Convert CREATE TABLE DDL into YAML schema definition using the Rust-based altimate-core engine. Parses DDL statements and produces a structured schema that other altimate-core tools can consume.",
+    "Convert CREATE TABLE DDL into YAML schema definition. Parses DDL statements and produces a structured schema that other altimate-core tools can consume.",
   parameters: z.object({
     ddl: z.string().describe("CREATE TABLE DDL statements to parse"),
     dialect: z.string().optional().describe("SQL dialect of the DDL"),
