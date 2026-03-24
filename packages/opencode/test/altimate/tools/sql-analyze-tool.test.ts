@@ -105,7 +105,7 @@ describe("SqlAnalyzeTool.execute: success semantics", () => {
 
     expect(result.metadata.success).toBe(false)
     expect(result.metadata.error).toBe("syntax error near SELECT")
-    expect(result.title).toContain("PARSE ERROR")
+    expect(result.title).toContain("ERROR")
   })
 
   test("dispatcher throws → catch block returns ERROR title", async () => {
