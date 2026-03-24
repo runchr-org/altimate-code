@@ -25,9 +25,12 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
       })
       const data = result.data as Record<string, any>
       const error = result.error ?? data.error ?? extractEquivalenceErrors(data)
+      // "Not equivalent" is a valid analysis result, not a failure.
+      // Only treat it as failure when there's an actual error.
+      const isRealFailure = !!error
       return {
         title: `Equivalence: ${data.equivalent ? "EQUIVALENT" : "DIFFERENT"}`,
-        metadata: { success: result.success, equivalent: data.equivalent, error },
+        metadata: { success: !isRealFailure, equivalent: data.equivalent, ...(error && { error }) },
         output: formatEquivalence(data),
       }
     } catch (e) {
