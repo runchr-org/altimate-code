@@ -19,6 +19,10 @@ import type { SessionID, MessageID } from "./schema"
 // altimate_change start — import Telemetry for per-generation token tracking
 import { Telemetry } from "@/altimate/telemetry"
 // altimate_change end
+// altimate_change start — import FileTime and Filesystem for stale file recovery (#450)
+import { FileTime } from "@/file/time"
+import { Filesystem } from "@/util/filesystem"
+// altimate_change end
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -211,12 +215,29 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    // altimate_change start — auto-read stale files so model sees current content (#450)
+                    let errorStr = (value.error as any).toString()
+                    const staleFileMatch =
+                      errorStr.match(/File (.+) has been modified since it was last read/) ??
+                      errorStr.match(/You must read file (.+) before overwriting it/)
+                    if (staleFileMatch) {
+                      const staleFilePath = staleFileMatch[1].trim()
+                      try {
+                        const freshContent = await Filesystem.readText(staleFilePath)
+                        FileTime.read(input.sessionID, staleFilePath)
+                        errorStr += `\n\nThe file has been auto-re-read. Here is the current content:\n<file path="${staleFilePath}">\n${freshContent}\n</file>`
+                        log.info("stale file auto-re-read", { file: staleFilePath, sessionID: input.sessionID })
+                      } catch (readErr) {
+                        log.warn("failed to auto-re-read stale file", { file: staleFilePath, error: readErr })
+                      }
+                    }
+                    // altimate_change end
                     await Session.updatePart({
                       ...match,
                       state: {
                         status: "error",
                         input: value.input ?? match.state.input,
-                        error: (value.error as any).toString(),
+                        error: errorStr,
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),
