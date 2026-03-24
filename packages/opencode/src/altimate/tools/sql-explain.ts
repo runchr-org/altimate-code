@@ -20,16 +20,17 @@ export const SqlExplainTool = Tool.define("sql_explain", {
       })
 
       if (!result.success) {
+        const error = result.error ?? "Unknown error"
         return {
           title: "Explain: FAILED",
-          metadata: { success: false, analyzed: false, warehouse_type: result.warehouse_type ?? "unknown", error: result.error },
-          output: `Failed to get execution plan: ${result.error ?? "Unknown error"}`,
+          metadata: { success: false, analyzed: false, warehouse_type: result.warehouse_type ?? "unknown", error },
+          output: `Failed to get execution plan: ${error}`,
         }
       }
 
       return {
         title: `Explain: ${result.analyzed ? "ANALYZE" : "PLAN"} [${result.warehouse_type ?? "unknown"}]`,
-        metadata: { success: true, analyzed: result.analyzed, warehouse_type: result.warehouse_type ?? "unknown", error: result.error },
+        metadata: { success: true, analyzed: result.analyzed, warehouse_type: result.warehouse_type ?? "unknown" },
         output: formatPlan(result),
       }
     } catch (e) {

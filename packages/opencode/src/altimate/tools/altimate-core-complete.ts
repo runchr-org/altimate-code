@@ -21,9 +21,10 @@ export const AltimateCoreCompleteTool = Tool.define("altimate_core_complete", {
       })
       const data = result.data as Record<string, any>
       const count = data.items?.length ?? data.suggestions?.length ?? 0
+      const error = result.error ?? (data as any).error
       return {
         title: `Complete: ${count} suggestion(s)`,
-        metadata: { success: result.success, suggestion_count: count, error: result.error ?? (data as any).error },
+        metadata: { success: result.success, suggestion_count: count, ...(error && { error }) },
         output: formatComplete(data),
       }
     } catch (e) {

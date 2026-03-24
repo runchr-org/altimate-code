@@ -65,10 +65,11 @@ export const FinopsQueryHistoryTool = Tool.define("finops_query_history", {
       })
 
       if (!result.success) {
+        const error = result.error ?? "Unknown error"
         return {
           title: "Query History: FAILED",
-          metadata: { success: false, query_count: 0, error: result.error },
-          output: `Failed to fetch query history: ${result.error ?? "Unknown error"}`,
+          metadata: { success: false, query_count: 0, error },
+          output: `Failed to fetch query history: ${error}`,
         }
       }
 

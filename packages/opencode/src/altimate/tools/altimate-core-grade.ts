@@ -20,9 +20,10 @@ export const AltimateCoreGradeTool = Tool.define("altimate_core_grade", {
       const data = result.data as Record<string, any>
       const grade = data.overall_grade ?? data.grade
       const score = data.scores?.overall != null ? Math.round(data.scores.overall * 100) : data.score
+      const error = result.error ?? data.error
       return {
         title: `Grade: ${grade ?? "?"}`,
-        metadata: { success: result.success, grade, score, error: result.error ?? data.error },
+        metadata: { success: result.success, grade, score, ...(error && { error }) },
         output: formatGrade(data),
       }
     } catch (e) {
