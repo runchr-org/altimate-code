@@ -192,7 +192,7 @@ jobs:
       # compile-time checks miss (e.g. missing NAPI externals like v0.5.10).
       - name: Pre-publish smoke test
         run: |
-          BINARY=$(find packages/opencode/dist -path '*/linux-x64/*/altimate' -type f | head -1)
+          BINARY=$(find packages/opencode/dist -path '*altimate-code-linux-x64/bin/altimate' -type f | head -1)
           if [ -z "$BINARY" ]; then
             echo "::error::No linux-x64 binary found in artifacts — cannot verify release"
             exit 1

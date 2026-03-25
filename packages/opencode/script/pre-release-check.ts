@@ -85,13 +85,16 @@ if (buildResult.status !== 0) {
   // Find the binary — walk recursively for scoped packages (@altimateai/...)
   const distDir = path.join(pkgDir, "dist")
   let binaryPath: string | undefined
+  const binaryNames = process.platform === "win32" ? ["altimate.exe", "altimate"] : ["altimate"]
   function searchDist(dir: string): string | undefined {
     if (!fs.existsSync(dir)) return undefined
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const sub = path.join(dir, entry.name)
-      const candidate = path.join(sub, "bin", "altimate")
-      if (fs.existsSync(candidate)) return candidate
+      for (const name of binaryNames) {
+        const candidate = path.join(sub, "bin", name)
+        if (fs.existsSync(candidate)) return candidate
+      }
       const nested = searchDist(sub)
       if (nested) return nested
     }
@@ -121,7 +124,7 @@ if (buildResult.status !== 0) {
       timeout: 15_000,
       env: {
         ...process.env,
-        NODE_PATH: nodePaths.join(":"),
+        NODE_PATH: nodePaths.join(path.delimiter),
         OPENCODE_DISABLE_TELEMETRY: "1",
       },
     })

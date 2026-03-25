@@ -26,12 +26,15 @@ function findLocalBinary(): string | undefined {
   if (!fs.existsSync(distDir)) return undefined
 
   // Walk dist/ recursively — binary packages may be scoped (@altimateai/...)
+  const binaryNames = process.platform === "win32" ? ["altimate.exe", "altimate"] : ["altimate"]
   function search(dir: string): string | undefined {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const sub = path.join(dir, entry.name)
-      const binPath = path.join(sub, "bin", "altimate")
-      if (fs.existsSync(binPath)) return binPath
+      for (const name of binaryNames) {
+        const binPath = path.join(sub, "bin", name)
+        if (fs.existsSync(binPath)) return binPath
+      }
       // Recurse one level for scoped packages (e.g. @altimateai/)
       const nested = search(sub)
       if (nested) return nested
@@ -55,7 +58,7 @@ function resolveNodePath(): string {
     if (parent === current) break
     current = parent
   }
-  return paths.join(":")
+  return paths.join(path.delimiter)
 }
 
 describe("compiled binary smoke test", () => {
