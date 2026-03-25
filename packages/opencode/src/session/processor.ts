@@ -237,6 +237,7 @@ export namespace SessionProcessor {
                         }
                       } catch (readErr) {
                         log.warn("failed to auto-re-read stale file", { file: staleFilePath, error: readErr })
+                        errorStr += `\n\nAttempted to auto-re-read the file but failed: ${String(readErr)}`
                       }
                     }
                     // altimate_change end
