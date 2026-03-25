@@ -47,6 +47,7 @@ export const SqlOptimizeTool = Tool.define("sql_optimize", {
           confidence: result.confidence,
           has_schema: hasSchema,
           dialect: args.dialect,
+          ...(result.error && { error: result.error }),
           ...(findings.length > 0 && { findings }),
         },
         output: formatOptimization(result),

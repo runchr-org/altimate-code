@@ -21,6 +21,7 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
       .describe('Inline schema definition, e.g. {"table_name": {"col": "TYPE"}}'),
   }),
   async execute(args, ctx) {
+    const hasSchema = !!(args.schema_path || (args.schema_context && Object.keys(args.schema_context).length > 0))
     try {
       const result = await Dispatcher.call("sql.analyze", {
         sql: args.sql,
@@ -45,7 +46,7 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
           issueCount: result.issue_count,
           confidence: result.confidence,
           dialect: args.dialect,
-          has_schema: false,
+          has_schema: hasSchema,
           ...(result.error && { error: result.error }),
           ...(findings.length > 0 && { findings }),
         },
@@ -60,7 +61,7 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
           issueCount: 0,
           confidence: "unknown",
           dialect: args.dialect,
-          has_schema: false,
+          has_schema: hasSchema,
           error: msg,
         },
         output: `Failed to analyze SQL: ${msg}\n\nCheck your connection configuration and try again.`,

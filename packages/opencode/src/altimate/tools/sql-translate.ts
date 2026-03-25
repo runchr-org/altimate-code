@@ -30,6 +30,7 @@ export const SqlTranslateTool = Tool.define("sql_translate", {
           source_dialect: result.source_dialect,
           target_dialect: result.target_dialect,
           warningCount: result.warnings.length,
+          ...(result.error && { error: result.error }),
         },
         output: formatTranslation(result, args.sql),
       }
