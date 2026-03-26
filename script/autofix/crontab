@@ -1,0 +1,16 @@
+# Autofix cron jobs for ac-autofix-vm
+# Install: crontab /home/kulvir/altimate-code/script/autofix/crontab
+
+# Source environment for all jobs
+SHELL=/bin/bash
+PATH=/home/kulvir/.local/share/fnm/aliases/default/bin:/home/kulvir/.bun/bin:/usr/local/bin:/usr/bin:/bin
+HOME=/home/kulvir
+
+# Loop A: Telemetry scan every 2 hours
+0 */2 * * * source /home/kulvir/.env && /home/kulvir/altimate-code/script/autofix/telemetry-scan.sh >> /home/kulvir/autofix-logs/telemetry.log 2>&1
+
+# Loop B: Daily improvement plan at 9 AM PST (17:00 UTC)
+0 17 * * * source /home/kulvir/.env && /home/kulvir/altimate-code/script/autofix/daily-plan.sh >> /home/kulvir/autofix-logs/daily-plan.log 2>&1
+
+# Weekly log cleanup (Sunday 3 AM UTC) — delete logs older than 7 days
+0 3 * * 0 find /home/kulvir/autofix-logs -name "*.log" -mtime +7 -delete 2>/dev/null

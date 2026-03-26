@@ -1,0 +1,20 @@
+[Unit]
+Description=Altimate Code Auto-Improver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kulvir
+WorkingDirectory=/home/kulvir/altimate-code
+ExecStart=/home/kulvir/altimate-code/script/autofix/daemon.sh
+Restart=always
+RestartSec=60
+EnvironmentFile=/home/kulvir/.env
+Environment=HOME=/home/kulvir
+Environment=PATH=/home/kulvir/.local/share/fnm/aliases/default/bin:/home/kulvir/.bun/bin:/usr/local/bin:/usr/bin:/bin
+CPUQuota=800%
+MemoryMax=32G
+
+[Install]
+WantedBy=multi-user.target
