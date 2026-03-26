@@ -13,6 +13,7 @@ import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
 import { Bus } from "../bus"
 import { FileTime } from "../file/time"
+import { ReadTool } from "./read"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
@@ -86,7 +87,13 @@ export const EditTool = Tool.define("edit", {
       const stats = Filesystem.stat(filePath)
       if (!stats) throw new Error(`File ${filePath} not found`)
       if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx.sessionID, filePath)
+      try {
+        await FileTime.assert(ctx.sessionID, filePath)
+      } catch (e: any) {
+        const readTool = await ReadTool.init()
+        const result = await readTool.execute({ filePath }, ctx)
+        throw new Error(e.message + "\n\nThe file has been read for you — you may retry immediately.\n\n" + result.output)
+      }
       contentOld = await Filesystem.readText(filePath)
 
       const ending = detectLineEnding(contentOld)

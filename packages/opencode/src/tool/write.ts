@@ -8,6 +8,7 @@ import { Bus } from "../bus"
 import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
 import { FileTime } from "../file/time"
+import { ReadTool } from "./read"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { trimDiff } from "./edit"
@@ -29,7 +30,15 @@ export const WriteTool = Tool.define("write", {
 
     const exists = await Filesystem.exists(filepath)
     const contentOld = exists ? await Filesystem.readText(filepath) : ""
-    if (exists) await FileTime.assert(ctx.sessionID, filepath)
+    if (exists) {
+      try {
+        await FileTime.assert(ctx.sessionID, filepath)
+      } catch (e: any) {
+        const readTool = await ReadTool.init()
+        const result = await readTool.execute({ filePath: filepath }, ctx)
+        throw new Error(e.message + "\n\nThe file has been read for you — you may retry immediately.\n\n" + result.output)
+      }
+    }
 
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
     await ctx.ask({
