@@ -154,6 +154,25 @@ jobs:
         run: bun run build
         working-directory: packages/dbt-tools
 
+      - name: Smoke test dbt-tools bundle
+        run: |
+          # Verify node_python_bridge.py was copied into dist
+          if [ ! -f packages/dbt-tools/dist/node_python_bridge.py ]; then
+            echo "::error::node_python_bridge.py missing from dbt-tools dist"
+            exit 1
+          fi
+          # Verify no hardcoded CI runner paths remain in the bundle
+          if grep -q 'home/runner' packages/dbt-tools/dist/index.js; then
+            echo "::error::dbt-tools bundle contains hardcoded CI runner path"
+            exit 1
+          fi
+          # Verify __dirname was patched to runtime resolution
+          if ! grep -q 'import.meta.dirname' packages/dbt-tools/dist/index.js; then
+            echo "::error::dbt-tools bundle missing import.meta.dirname patch"
+            exit 1
+          fi
+          echo "dbt-tools smoke test passed"
+
       - name: Free disk space for artifact download + npm publish
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
