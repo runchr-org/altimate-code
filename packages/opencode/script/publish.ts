@@ -21,14 +21,14 @@ const runtimeDependencies: Record<string, string> = {
 }
 
 const driverPeerDependencies: Record<string, string> = {
-  "pg": ">=8",
+  pg: ">=8",
   "snowflake-sdk": ">=1",
   "@google-cloud/bigquery": ">=8",
   "@databricks/sql": ">=1",
-  "mysql2": ">=3",
-  "mssql": ">=11",
-  "oracledb": ">=6",
-  "duckdb": ">=1",
+  mysql2: ">=3",
+  mssql: ">=11",
+  oracledb: ">=6",
+  duckdb: ">=1",
 }
 
 const driverPeerDependenciesMeta: Record<string, { optional: true }> = Object.fromEntries(
@@ -72,9 +72,7 @@ async function copyAssets(targetDir: string) {
   // dist/index.js as ESM instead of CJS. We synthesize a minimal one rather
   // than copying the full source package.json (which contains devDependencies
   // with Bun catalog: versions that would confuse vulnerability scanners).
-  await Bun.file(`${targetDir}/dbt-tools/package.json`).write(
-    JSON.stringify({ type: "module" }, null, 2) + "\n",
-  )
+  await Bun.file(`${targetDir}/dbt-tools/package.json`).write(JSON.stringify({ type: "module" }, null, 2) + "\n")
   if (fs.existsSync("../dbt-tools/dist/altimate_python_packages")) {
     await $`cp -r ../dbt-tools/dist/altimate_python_packages ${targetDir}/dbt-tools/dist/`
   }

@@ -14,9 +14,7 @@ mock.module("child_process", () => ({
 }))
 
 // Import after mocking
-const { execDbtShow, execDbtCompile, execDbtCompileInline, execDbtLs } = await import(
-  "../src/dbt-cli"
-)
+const { execDbtShow, execDbtCompile, execDbtCompileInline, execDbtLs } = await import("../src/dbt-cli")
 
 // ---------------------------------------------------------------------------
 // execDbtShow
@@ -46,9 +44,7 @@ describe("execDbtShow", () => {
   })
 
   test("Tier 1: parses data.rows (alternative format)", async () => {
-    const jsonLines = [
-      JSON.stringify({ data: { rows: [{ name: "Alice" }, { name: "Bob" }] } }),
-    ].join("\n")
+    const jsonLines = [JSON.stringify({ data: { rows: [{ name: "Alice" }, { name: "Bob" }] } })].join("\n")
 
     mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
       cb(null, jsonLines, "")
@@ -60,9 +56,7 @@ describe("execDbtShow", () => {
   })
 
   test("Tier 1: parses result.preview (hypothetical future format)", async () => {
-    const jsonLines = [
-      JSON.stringify({ result: { preview: [{ id: 42 }], sql: "SELECT 42" } }),
-    ].join("\n")
+    const jsonLines = [JSON.stringify({ result: { preview: [{ id: 42 }], sql: "SELECT 42" } })].join("\n")
 
     mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
       cb(null, jsonLines, "")
@@ -136,16 +130,7 @@ describe("execDbtShow", () => {
         cb(null, JSON.stringify({ info: { msg: "done" } }), "")
       } else {
         // Plain text ASCII table
-        cb(
-          null,
-          [
-            "| id | name  |",
-            "| -- | ----- |",
-            "| 1  | Alice |",
-            "| 2  | Bob   |",
-          ].join("\n"),
-          "",
-        )
+        cb(null, ["| id | name  |", "| -- | ----- |", "| 1  | Alice |", "| 2  | Bob   |"].join("\n"), "")
       }
     })
 
@@ -189,9 +174,7 @@ describe("execDbtCompile", () => {
   })
 
   test("Tier 1: parses data.compiled_code (newer dbt)", async () => {
-    const jsonLines = [
-      JSON.stringify({ data: { compiled_code: "SELECT * FROM stg_orders" } }),
-    ].join("\n")
+    const jsonLines = [JSON.stringify({ data: { compiled_code: "SELECT * FROM stg_orders" } })].join("\n")
 
     mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
       cb(null, jsonLines, "")
@@ -202,9 +185,7 @@ describe("execDbtCompile", () => {
   })
 
   test("Tier 1: parses result.node.compiled_code", async () => {
-    const jsonLines = [
-      JSON.stringify({ result: { node: { compiled_code: "SELECT 1" } } }),
-    ].join("\n")
+    const jsonLines = [JSON.stringify({ result: { node: { compiled_code: "SELECT 1" } } })].join("\n")
 
     mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
       cb(null, jsonLines, "")
@@ -215,9 +196,7 @@ describe("execDbtCompile", () => {
   })
 
   test("Tier 1: parses data.compiled_sql", async () => {
-    const jsonLines = [
-      JSON.stringify({ data: { compiled_sql: "SELECT 1 FROM foo" } }),
-    ].join("\n")
+    const jsonLines = [JSON.stringify({ data: { compiled_sql: "SELECT 1 FROM foo" } })].join("\n")
 
     mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
       cb(null, jsonLines, "")
@@ -273,9 +252,7 @@ describe("execDbtCompileInline", () => {
   })
 
   test("compiles inline SQL", async () => {
-    const jsonLines = [
-      JSON.stringify({ data: { compiled: "SELECT id, name FROM raw.customers" } }),
-    ].join("\n")
+    const jsonLines = [JSON.stringify({ data: { compiled: "SELECT id, name FROM raw.customers" } })].join("\n")
 
     mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
       cb(null, jsonLines, "")
@@ -339,11 +316,7 @@ describe("execDbtLs", () => {
         cb(new Error("--output json not supported"), "", "")
       } else {
         // Plain text: one unique_id per line
-        cb(
-          null,
-          "model.jaffle.stg_orders\nmodel.jaffle.stg_payments\nmodel.jaffle.orders\n",
-          "",
-        )
+        cb(null, "model.jaffle.stg_orders\nmodel.jaffle.stg_payments\nmodel.jaffle.orders\n", "")
       }
     })
 
