@@ -182,15 +182,20 @@ export namespace Installation {
       case "curl":
         result = await upgradeCurl(target)
         break
+      // altimate_change start — force re-fetch to prevent stale native binaries
+      // npm may serve cached platform binaries from @altimateai/altimate-core's
+      // optionalDependencies (see npm/cli#4828). --force ensures all dependencies
+      // are re-resolved and re-fetched from the registry.
       case "npm":
-        result = await Process.run(["npm", "install", "-g", `@altimateai/altimate-code@${target}`], { nothrow: true })
+        result = await Process.run(["npm", "install", "-g", "--force", `@altimateai/altimate-code@${target}`], { nothrow: true })
         break
       case "pnpm":
-        result = await Process.run(["pnpm", "install", "-g", `@altimateai/altimate-code@${target}`], { nothrow: true })
+        result = await Process.run(["pnpm", "install", "-g", "--force", `@altimateai/altimate-code@${target}`], { nothrow: true })
         break
       case "bun":
-        result = await Process.run(["bun", "install", "-g", `@altimateai/altimate-code@${target}`], { nothrow: true })
+        result = await Process.run(["bun", "install", "-g", "--force", `@altimateai/altimate-code@${target}`], { nothrow: true })
         break
+      // altimate_change end
       case "brew": {
         const formula = await getBrewFormula()
         const env = {
