@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, beforeAll, afterAll } from "bun:test"
+import { describe, expect, test, beforeEach, afterEach, beforeAll, afterAll } from "bun:test"
 import * as Dispatcher from "../../src/altimate/native/dispatcher"
 
 // Disable telemetry via env var instead of mock.module
@@ -71,6 +71,70 @@ describe("ConnectionRegistry", () => {
     Registry.setConfigs({ b: { type: "mysql" }, c: { type: "duckdb" } })
     expect(Registry.list().warehouses).toHaveLength(2)
     expect(Registry.getConfig("a")).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// loadFromEnv — env-var-based connection config loading
+// ---------------------------------------------------------------------------
+
+describe("loadFromEnv via Registry.load()", () => {
+  const saved: Record<string, string | undefined> = {}
+
+  function setEnv(key: string, value: string) {
+    saved[key] = process.env[key]
+    process.env[key] = value
+  }
+
+  beforeEach(() => {
+    Registry.reset()
+  })
+
+  afterEach(() => {
+    for (const [key, orig] of Object.entries(saved)) {
+      if (orig === undefined) delete process.env[key]
+      else process.env[key] = orig
+    }
+    // Clear saved state for next test
+    for (const key of Object.keys(saved)) delete saved[key]
+  })
+
+  test("parses valid JSON from ALTIMATE_CODE_CONN_* env vars", () => {
+    setEnv("ALTIMATE_CODE_CONN_MYDB", JSON.stringify({ type: "postgres", host: "localhost", port: 5432 }))
+    Registry.load()
+    const config = Registry.getConfig("mydb")
+    expect(config).toBeDefined()
+    expect(config?.type).toBe("postgres")
+    expect(config?.host).toBe("localhost")
+  })
+
+  test("lowercases connection name from env var suffix", () => {
+    setEnv("ALTIMATE_CODE_CONN_PROD_DB", JSON.stringify({ type: "snowflake", account: "abc" }))
+    Registry.load()
+    expect(Registry.getConfig("prod_db")).toBeDefined()
+    expect(Registry.getConfig("PROD_DB")).toBeUndefined()
+  })
+
+  test("ignores env var with invalid JSON", () => {
+    setEnv("ALTIMATE_CODE_CONN_BAD", "not-valid-json{")
+    Registry.load()
+    expect(Registry.getConfig("bad")).toBeUndefined()
+  })
+
+  test("ignores env var config without type field", () => {
+    setEnv("ALTIMATE_CODE_CONN_NOTYPE", JSON.stringify({ host: "localhost", port: 5432 }))
+    Registry.load()
+    expect(Registry.getConfig("notype")).toBeUndefined()
+  })
+
+  test("ignores non-object JSON values (string, number, array)", () => {
+    setEnv("ALTIMATE_CODE_CONN_STR", JSON.stringify("just a string"))
+    setEnv("ALTIMATE_CODE_CONN_NUM", JSON.stringify(42))
+    setEnv("ALTIMATE_CODE_CONN_ARR", JSON.stringify([1, 2, 3]))
+    Registry.load()
+    expect(Registry.getConfig("str")).toBeUndefined()
+    expect(Registry.getConfig("num")).toBeUndefined()
+    expect(Registry.getConfig("arr")).toBeUndefined()
   })
 })
 

@@ -169,6 +169,23 @@ describe("warehouse telemetry: detectAuthMethod", () => {
     expect(connectEvent).toBeDefined()
     expect(connectEvent.auth_method).toBe("unknown")
   })
+
+  // MongoDB-specific auth detection (added with MongoDB driver support #482)
+  test("detects connection_string auth for mongodb without password", () => {
+    expect(Registry.detectAuthMethod({ type: "mongodb", host: "localhost" } as any)).toBe("connection_string")
+  })
+
+  test("detects password auth for mongodb with password", () => {
+    expect(Registry.detectAuthMethod({ type: "mongodb", host: "localhost", password: "secret" } as any)).toBe("password")
+  })
+
+  test("detects connection_string auth for mongo alias without password", () => {
+    expect(Registry.detectAuthMethod({ type: "mongo", host: "localhost" } as any)).toBe("connection_string")
+  })
+
+  test("prefers explicit connection_string field over mongodb type fallback", () => {
+    expect(Registry.detectAuthMethod({ type: "mongodb", connection_string: "mongodb://localhost/test" } as any)).toBe("connection_string")
+  })
 })
 
 // ---------------------------------------------------------------------------
