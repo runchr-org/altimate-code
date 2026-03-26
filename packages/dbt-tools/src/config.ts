@@ -33,28 +33,24 @@ export function findProjectRoot(start = process.cwd()): string | null {
   }
 }
 
+const isWindows = process.platform === "win32"
+// Windows venvs use Scripts/, Unix venvs use bin/
+const VENV_BIN = isWindows ? "Scripts" : "bin"
+// Windows executables have .exe suffix
+const EXE = isWindows ? ".exe" : ""
+
 /**
  * Discover the Python binary for a given project root.
- * Priority: ALTIMATE_CODE_PYTHON_PATH → ALTIMATE_CODE_VIRTUAL_ENV → project-local .venv → VIRTUAL_ENV → CONDA_PREFIX → which python3
+ * Priority: project-local .venv → VIRTUAL_ENV → CONDA_PREFIX → which/where python
  */
 export function discoverPython(projectRoot: string): string {
-  // ALTIMATE_CODE_PYTHON_PATH (explicit selection from vscode-altimate-mcp-server — highest priority)
-  const altPython = process.env.ALTIMATE_CODE_PYTHON_PATH
-  if (altPython && existsSync(altPython)) return altPython
-
-  // ALTIMATE_CODE_VIRTUAL_ENV (injected by vscode-altimate-mcp-server — explicit user selection wins)
-  const altVenv = process.env.ALTIMATE_CODE_VIRTUAL_ENV
-  if (altVenv) {
-    for (const bin of ["python3", "python"]) {
-      const py = join(altVenv, "bin", bin)
-      if (existsSync(py)) return py
-    }
-  }
+  // Candidate Python binary names (python3 first on Unix; python.exe on Windows)
+  const pythonBins = isWindows ? ["python.exe", "python3.exe"] : ["python3", "python"]
 
   // Project-local venvs (uv, pdm, venv, poetry in-project, rye)
   for (const venvDir of [".venv", "venv", "env"]) {
-    for (const bin of ["python3", "python"]) {
-      const py = join(projectRoot, venvDir, "bin", bin)
+    for (const bin of pythonBins) {
+      const py = join(projectRoot, venvDir, VENV_BIN, bin)
       if (existsSync(py)) return py
     }
   }
@@ -62,8 +58,8 @@ export function discoverPython(projectRoot: string): string {
   // VIRTUAL_ENV (set by activate scripts)
   const virtualEnv = process.env.VIRTUAL_ENV
   if (virtualEnv) {
-    for (const bin of ["python3", "python"]) {
-      const py = join(virtualEnv, "bin", bin)
+    for (const bin of pythonBins) {
+      const py = join(virtualEnv, VENV_BIN, bin)
       if (existsSync(py)) return py
     }
   }
@@ -71,19 +67,22 @@ export function discoverPython(projectRoot: string): string {
   // CONDA_PREFIX
   const condaPrefix = process.env.CONDA_PREFIX
   if (condaPrefix) {
-    for (const bin of ["python3", "python"]) {
-      const py = join(condaPrefix, "bin", bin)
+    for (const bin of pythonBins) {
+      const py = join(condaPrefix, VENV_BIN, bin)
       if (existsSync(py)) return py
     }
   }
 
-  // PATH-based discovery
-  for (const cmd of ["python3", "python"]) {
+  // PATH-based discovery (`where` on Windows, `which` on Unix)
+  const whichCmd = isWindows ? "where" : "which"
+  const cmds = isWindows ? ["python.exe", "python3.exe", "python"] : ["python3", "python"]
+  for (const cmd of cmds) {
     try {
-      return execFileSync("which", [cmd], { encoding: "utf-8" }).trim()
+      // `where` on Windows may return multiple lines — take the first
+      return execFileSync(whichCmd, [cmd], { encoding: "utf-8" }).trim().split(/\r?\n/)[0]
     } catch {}
   }
-  return "python3"
+  return isWindows ? "python.exe" : "python3"
 }
 
 async function read(): Promise<Config | null> {

@@ -29,6 +29,12 @@ import { execFileSync } from "child_process"
 import { existsSync, realpathSync, readFileSync } from "fs"
 import { dirname, join } from "path"
 
+const isWindows = process.platform === "win32"
+// Windows venvs use Scripts/, Unix venvs use bin/
+const VENV_BIN = isWindows ? "Scripts" : "bin"
+// Windows executables have .exe suffix
+const EXE = isWindows ? ".exe" : ""
+
 export interface ResolvedDbt {
   /** Absolute path to the dbt binary (or "dbt" if relying on PATH). */
   path: string
@@ -43,16 +49,14 @@ export interface ResolvedDbt {
  *
  * Priority:
  *  1. ALTIMATE_DBT_PATH env var (explicit user override)
- *  2. Sibling of ALTIMATE_CODE_PYTHON_PATH (set by vscode-altimate-mcp-server)
- *  3. Sibling of configured pythonPath (same venv/bin)
- *  4. ALTIMATE_CODE_VIRTUAL_ENV/bin/dbt (set by vscode-altimate-mcp-server)
- *  5. Project-local .venv/bin/dbt (uv, pdm, venv, rye, poetry in-project)
- *  6. CONDA_PREFIX/bin/dbt (conda environments)
- *  7. VIRTUAL_ENV/bin/dbt (activated venv)
- *  8. Pyenv real path resolution (follow shims)
- *  9. asdf/mise shim resolution
- * 10. `which dbt` on current PATH
- * 11. Common known locations (~/.local/bin/dbt for pipx, etc.)
+ *  2. Sibling of configured pythonPath (same venv/Scripts or venv/bin)
+ *  3. Project-local .venv/bin/dbt or .venv/Scripts/dbt.exe
+ *  4. CONDA_PREFIX/bin/dbt or Scripts/dbt.exe (conda environments)
+ *  5. VIRTUAL_ENV/bin/dbt or Scripts/dbt.exe (activated venv)
+ *  6. Pyenv real path resolution — Unix only (follow shims)
+ *  7. asdf/mise shim resolution — Unix only
+ *  8. `which`/`where dbt` on current PATH
+ *  9. Common known locations (~/.local/bin/dbt for pipx, etc.)
  *
  * Each candidate is validated by checking it exists and is executable.
  */
@@ -65,17 +69,10 @@ export function resolveDbt(pythonPath?: string, projectRoot?: string): ResolvedD
     candidates.push({ path: envOverride, source: "ALTIMATE_DBT_PATH env var" })
   }
 
-  // 2. Sibling of ALTIMATE_CODE_PYTHON_PATH (injected by vscode-altimate-mcp-server)
-  const altPython = process.env.ALTIMATE_CODE_PYTHON_PATH
-  if (altPython) {
-    const binDir = dirname(altPython)
-    candidates.push({ path: join(binDir, "dbt"), source: "sibling of ALTIMATE_CODE_PYTHON_PATH", binDir })
-  }
-
-  // 3. Sibling of configured pythonPath (most common: venv, conda, pyenv real path)
+  // 2. Sibling of configured pythonPath (most common: venv, conda, pyenv real path)
   if (pythonPath && existsSync(pythonPath)) {
     const binDir = dirname(pythonPath)
-    const siblingDbt = join(binDir, "dbt")
+    const siblingDbt = join(binDir, `dbt${EXE}`)
     candidates.push({ path: siblingDbt, source: `sibling of pythonPath (${pythonPath})`, binDir })
 
     // If pythonPath is a symlink (e.g., pyenv shim), also check the real path
@@ -83,109 +80,116 @@ export function resolveDbt(pythonPath?: string, projectRoot?: string): ResolvedD
       const realPython = realpathSync(pythonPath)
       if (realPython !== pythonPath) {
         const realBinDir = dirname(realPython)
-        const realDbt = join(realBinDir, "dbt")
+        const realDbt = join(realBinDir, `dbt${EXE}`)
         candidates.push({ path: realDbt, source: `real path of pythonPath (${realPython})`, binDir: realBinDir })
       }
     } catch {}
   }
 
-  // 4. ALTIMATE_CODE_VIRTUAL_ENV (injected by vscode-altimate-mcp-server, avoids conflicts with user's VIRTUAL_ENV)
-  const altVenv = process.env.ALTIMATE_CODE_VIRTUAL_ENV
-  if (altVenv) {
-    candidates.push({
-      path: join(altVenv, "bin", "dbt"),
-      source: `ALTIMATE_CODE_VIRTUAL_ENV (${altVenv})`,
-      binDir: join(altVenv, "bin"),
-    })
-  }
-
-  // 5. Project-local .venv/bin/dbt (uv, pdm, venv, poetry in-project, rye)
+  // 3. Project-local .venv/Scripts/dbt.exe (Windows) or .venv/bin/dbt (Unix)
   if (projectRoot) {
     for (const venvDir of [".venv", "venv", "env"]) {
-      const localDbt = join(projectRoot, venvDir, "bin", "dbt")
+      const localDbt = join(projectRoot, venvDir, VENV_BIN, `dbt${EXE}`)
       candidates.push({
         path: localDbt,
         source: `${venvDir}/ in project root`,
-        binDir: join(projectRoot, venvDir, "bin"),
+        binDir: join(projectRoot, venvDir, VENV_BIN),
       })
     }
   }
 
-  // 6. CONDA_PREFIX (conda/mamba/micromamba — set after `conda activate`)
+  // 4. CONDA_PREFIX (conda/mamba/micromamba — set after `conda activate`)
   const condaPrefix = process.env.CONDA_PREFIX
   if (condaPrefix) {
     candidates.push({
-      path: join(condaPrefix, "bin", "dbt"),
+      path: join(condaPrefix, VENV_BIN, `dbt${EXE}`),
       source: `CONDA_PREFIX (${condaPrefix})`,
-      binDir: join(condaPrefix, "bin"),
+      binDir: join(condaPrefix, VENV_BIN),
     })
   }
 
-  // 7. VIRTUAL_ENV (set by venv/virtualenv activate scripts)
+  // 5. VIRTUAL_ENV (set by venv/virtualenv activate scripts)
   const virtualEnv = process.env.VIRTUAL_ENV
   if (virtualEnv) {
     candidates.push({
-      path: join(virtualEnv, "bin", "dbt"),
+      path: join(virtualEnv, VENV_BIN, `dbt${EXE}`),
       source: `VIRTUAL_ENV (${virtualEnv})`,
-      binDir: join(virtualEnv, "bin"),
+      binDir: join(virtualEnv, VENV_BIN),
     })
   }
 
   // Helper: current process env (for subprocess calls that need to inherit it)
   const currentEnv = { ...process.env }
 
-  // 8. Pyenv: resolve through shim to real binary
-  const pyenvRoot = process.env.PYENV_ROOT ?? join(process.env.HOME ?? "", ".pyenv")
-  if (existsSync(join(pyenvRoot, "shims", "dbt"))) {
-    try {
-      // `pyenv which dbt` resolves the shim to the actual binary path
-      const realDbt = execFileSync("pyenv", ["which", "dbt"], {
-        encoding: "utf-8",
-        timeout: 5_000,
-        env: { ...currentEnv, PYENV_ROOT: pyenvRoot },
-      }).trim()
-      if (realDbt) {
-        candidates.push({ path: realDbt, source: `pyenv which dbt`, binDir: dirname(realDbt) })
+  if (!isWindows) {
+    // 6. Pyenv: resolve through shim to real binary (Unix only)
+    const pyenvRoot = process.env.PYENV_ROOT ?? join(process.env.HOME ?? "", ".pyenv")
+    if (existsSync(join(pyenvRoot, "shims", "dbt"))) {
+      try {
+        // `pyenv which dbt` resolves the shim to the actual binary path
+        const realDbt = execFileSync("pyenv", ["which", "dbt"], {
+          encoding: "utf-8",
+          timeout: 5_000,
+          env: { ...currentEnv, PYENV_ROOT: pyenvRoot },
+        }).trim()
+        if (realDbt) {
+          candidates.push({ path: realDbt, source: `pyenv which dbt`, binDir: dirname(realDbt) })
+        }
+      } catch {
+        // pyenv not functional — shim won't resolve
       }
-    } catch {
-      // pyenv not functional — shim won't resolve
+    }
+
+    // 7. asdf/mise shim resolution (Unix only)
+    const asdfDataDir = process.env.ASDF_DATA_DIR ?? join(process.env.HOME ?? "", ".asdf")
+    if (existsSync(join(asdfDataDir, "shims", "dbt"))) {
+      try {
+        const realDbt = execFileSync("asdf", ["which", "dbt"], {
+          encoding: "utf-8",
+          timeout: 5_000,
+          env: currentEnv,
+        }).trim()
+        if (realDbt) {
+          candidates.push({ path: realDbt, source: `asdf which dbt`, binDir: dirname(realDbt) })
+        }
+      } catch {}
     }
   }
 
-  // 9. asdf/mise shim resolution
-  const asdfDataDir = process.env.ASDF_DATA_DIR ?? join(process.env.HOME ?? "", ".asdf")
-  if (existsSync(join(asdfDataDir, "shims", "dbt"))) {
-    try {
-      const realDbt = execFileSync("asdf", ["which", "dbt"], {
-        encoding: "utf-8",
-        timeout: 5_000,
-        env: currentEnv,
-      }).trim()
-      if (realDbt) {
-        candidates.push({ path: realDbt, source: `asdf which dbt`, binDir: dirname(realDbt) })
-      }
-    } catch {}
-  }
-
-  // 10. `which dbt` on current PATH (catches pipx ~/.local/bin, system pip, homebrew, etc.)
+  // 8. `where dbt` (Windows) / `which dbt` (Unix) on current PATH
+  const whichCmd = isWindows ? "where" : "which"
+  const dbtCmd = `dbt${EXE}`
   try {
-    const whichDbt = execFileSync("which", ["dbt"], {
+    const found = execFileSync(whichCmd, [dbtCmd], {
       encoding: "utf-8",
       timeout: 5_000,
       env: currentEnv,
-    }).trim()
-    if (whichDbt) {
-      candidates.push({ path: whichDbt, source: `which dbt (PATH)`, binDir: dirname(whichDbt) })
+    })
+      .trim()
+      .split(/\r?\n/)[0] // `where` may return multiple lines — take the first
+    if (found) {
+      candidates.push({ path: found, source: `${whichCmd} dbt (PATH)`, binDir: dirname(found) })
     }
   } catch {}
 
-  // 11. Common known locations (last resort)
-  const home = process.env.HOME ?? ""
-  const knownPaths = [
-    { path: join(home, ".local", "bin", "dbt"), source: "~/.local/bin/dbt (pipx/user pip)" },
-    { path: "/usr/local/bin/dbt", source: "/usr/local/bin/dbt (system pip)" },
-    { path: "/opt/homebrew/bin/dbt", source: "/opt/homebrew/bin/dbt (homebrew, deprecated)" },
-  ]
+  // 9. Common known locations (last resort)
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? ""
+  const knownPaths = isWindows
+    ? [
+        {
+          path: join(home, "AppData", "Roaming", "Python", "Scripts", "dbt.exe"),
+          source: "%APPDATA%/Python/Scripts/dbt.exe (user pip)",
+        },
+        {
+          path: join(home, "AppData", "Local", "Programs", "Python", "Scripts", "dbt.exe"),
+          source: "%LOCALAPPDATA%/Programs/Python/Scripts/dbt.exe (system pip)",
+        },
+      ]
+    : [
+        { path: join(home, ".local", "bin", "dbt"), source: "~/.local/bin/dbt (pipx/user pip)" },
+        { path: "/usr/local/bin/dbt", source: "/usr/local/bin/dbt (system pip)" },
+        { path: "/opt/homebrew/bin/dbt", source: "/opt/homebrew/bin/dbt (homebrew, deprecated)" },
+      ]
   for (const kp of knownPaths) {
     candidates.push({ ...kp, binDir: dirname(kp.path) })
   }
@@ -197,8 +201,8 @@ export function resolveDbt(pythonPath?: string, projectRoot?: string): ResolvedD
     }
   }
 
-  // Nothing found — return bare "dbt" and hope PATH has it
-  return { path: "dbt", source: "fallback (bare dbt on PATH)" }
+  // Nothing found — return bare "dbt" (or "dbt.exe") and hope PATH has it
+  return { path: `dbt${EXE}`, source: "fallback (bare dbt on PATH)" }
 }
 
 /**

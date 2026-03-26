@@ -169,94 +169,26 @@ describe("discoverPython", () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  test("ALTIMATE_CODE_PYTHON_PATH takes highest priority", async () => {
-    const { discoverPython } = await import("../src/config")
-
-    const altPythonBin = join(dir, "alt-python", "bin")
-    await mkdir(altPythonBin, { recursive: true })
-    await writeFile(join(altPythonBin, "python3"), "#!/bin/sh")
-
-    const localBin = join(dir, "project", ".venv", "bin")
-    await mkdir(localBin, { recursive: true })
-    await writeFile(join(localBin, "python3"), "#!/bin/sh")
-
-    const origPython = process.env.ALTIMATE_CODE_PYTHON_PATH
-    const origVenv = process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    process.env.ALTIMATE_CODE_PYTHON_PATH = join(altPythonBin, "python3")
-    process.env.ALTIMATE_CODE_VIRTUAL_ENV = join(dir, "project", ".venv")
-    try {
-      const result = discoverPython(join(dir, "project"))
-      expect(result).toBe(join(altPythonBin, "python3"))
-    } finally {
-      if (origPython !== undefined) process.env.ALTIMATE_CODE_PYTHON_PATH = origPython
-      else delete process.env.ALTIMATE_CODE_PYTHON_PATH
-      if (origVenv !== undefined) process.env.ALTIMATE_CODE_VIRTUAL_ENV = origVenv
-      else delete process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    }
-  })
-
-  test("ALTIMATE_CODE_VIRTUAL_ENV takes priority over project-local .venv", async () => {
-    const { discoverPython } = await import("../src/config")
-
-    const altBin = join(dir, "alt-venv", "bin")
-    await mkdir(altBin, { recursive: true })
-    await writeFile(join(altBin, "python3"), "#!/bin/sh")
-
-    const localBin = join(dir, "project", ".venv", "bin")
-    await mkdir(localBin, { recursive: true })
-    await writeFile(join(localBin, "python3"), "#!/bin/sh")
-
-    const orig = process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    process.env.ALTIMATE_CODE_VIRTUAL_ENV = join(dir, "alt-venv")
-    try {
-      const result = discoverPython(join(dir, "project"))
-      expect(result).toBe(join(altBin, "python3"))
-    } finally {
-      if (orig !== undefined) process.env.ALTIMATE_CODE_VIRTUAL_ENV = orig
-      else delete process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    }
-  })
-
   test("falls back to project-local .venv/bin/python3", async () => {
     const { discoverPython } = await import("../src/config")
-
-    const origVenv = process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    const origPython = process.env.ALTIMATE_CODE_PYTHON_PATH
-    delete process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    delete process.env.ALTIMATE_CODE_PYTHON_PATH
 
     const binDir = join(dir, ".venv", "bin")
     await mkdir(binDir, { recursive: true })
     await writeFile(join(binDir, "python3"), "#!/bin/sh")
 
-    try {
-      const result = discoverPython(dir)
-      expect(result).toBe(join(binDir, "python3"))
-    } finally {
-      if (origVenv !== undefined) process.env.ALTIMATE_CODE_VIRTUAL_ENV = origVenv
-      if (origPython !== undefined) process.env.ALTIMATE_CODE_PYTHON_PATH = origPython
-    }
+    const result = discoverPython(dir)
+    expect(result).toBe(join(binDir, "python3"))
   })
 
   test("tries python3 before python in each location", async () => {
     const { discoverPython } = await import("../src/config")
-
-    const origVenv = process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    const origPython = process.env.ALTIMATE_CODE_PYTHON_PATH
-    delete process.env.ALTIMATE_CODE_VIRTUAL_ENV
-    delete process.env.ALTIMATE_CODE_PYTHON_PATH
 
     const binDir = join(dir, ".venv", "bin")
     await mkdir(binDir, { recursive: true })
     // Only create python3, not python
     await writeFile(join(binDir, "python3"), "#!/bin/sh")
 
-    try {
-      const result = discoverPython(dir)
-      expect(result).toBe(join(binDir, "python3"))
-    } finally {
-      if (origVenv !== undefined) process.env.ALTIMATE_CODE_VIRTUAL_ENV = origVenv
-      if (origPython !== undefined) process.env.ALTIMATE_CODE_PYTHON_PATH = origPython
-    }
+    const result = discoverPython(dir)
+    expect(result).toBe(join(binDir, "python3"))
   })
 })
