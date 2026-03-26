@@ -2,12 +2,22 @@ import { describe, expect, test, beforeEach, beforeAll, afterAll, mock } from "b
 import * as Dispatcher from "../../src/altimate/native/dispatcher"
 
 // Disable telemetry via env var instead of mock.module
-beforeAll(() => { process.env.ALTIMATE_TELEMETRY_DISABLED = "true" })
-afterAll(() => { delete process.env.ALTIMATE_TELEMETRY_DISABLED })
+beforeAll(() => {
+  process.env.ALTIMATE_TELEMETRY_DISABLED = "true"
+})
+afterAll(() => {
+  delete process.env.ALTIMATE_TELEMETRY_DISABLED
+})
 
 describe("Dispatcher", () => {
   beforeEach(() => {
     Dispatcher.reset()
+    // Clear lazy registration hook to prevent other test files' imports
+    // from triggering handler registration during these unit tests.
+    // Without this, Bun's multi-file runner leaks the hook from files
+    // that import native/index.ts, causing call() to resolve instead
+    // of rejecting for unregistered methods.
+    Dispatcher.setRegistrationHook(null as any)
   })
 
   describe("register and hasNativeHandler", () => {
@@ -36,9 +46,7 @@ describe("Dispatcher", () => {
 
   describe("call — no handler", () => {
     test("throws when no native handler registered", async () => {
-      await expect(Dispatcher.call("ping", {} as any)).rejects.toThrow(
-        "No native handler for ping",
-      )
+      await expect(Dispatcher.call("ping", {} as any)).rejects.toThrow("No native handler for ping")
     })
   })
 
@@ -65,7 +73,9 @@ describe("Dispatcher", () => {
     })
 
     test("tracks telemetry on error", async () => {
-      Dispatcher.register("ping", async () => { throw new Error("fail") })
+      Dispatcher.register("ping", async () => {
+        throw new Error("fail")
+      })
       await expect(Dispatcher.call("ping", {} as any)).rejects.toThrow("fail")
       // Telemetry is disabled — just verify no crash
     })

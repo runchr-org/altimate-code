@@ -11,14 +11,26 @@
  * Set DBT_TEST_PROJECT_ROOT env var to override the project path.
  */
 
-import { describe, expect, test, beforeAll, afterAll, beforeEach, mock } from "bun:test"
+import { describe, expect, test, beforeAll, afterAll, beforeEach, mock, spyOn } from "bun:test"
 import { existsSync, readFileSync } from "fs"
 import { join } from "path"
 import { homedir } from "os"
 import type { Connector } from "@altimateai/drivers/types"
+import * as Dispatcher from "../../src/altimate/native/dispatcher"
 
-// Mock DuckDB driver so tests don't require the native duckdb package
+// Import native/index.ts to ensure the lazy registration hook is set.
+// In Bun's multi-file runner, test execution order is unpredictable —
+// if dispatcher.test.ts runs first and clears the hook, this file's
+// Dispatcher.call() would fail with "No native handler" errors.
+// Re-importing here ensures the hook is always available.
+import "../../src/altimate/native"
+
+// Mock DuckDB driver so tests don't require the native duckdb package.
+// NOTE: mock.module leaks across test files in Bun — we spread the real
+// module exports to minimize damage to other test files.
+import * as realDuckdb from "@altimateai/drivers/duckdb"
 mock.module("@altimateai/drivers/duckdb", () => ({
+  ...realDuckdb,
   connect: async (config: any) => ({
     execute: async (sql: string) => {
       // Simple mock: parse SELECT literals
@@ -108,15 +120,11 @@ const HAS_DBT = !!DBT_PROJECT
 // ---------------------------------------------------------------------------
 describe("dbt Profiles Auto-Discovery", () => {
   test("parseDbtProfiles finds connections from ~/.dbt/profiles.yml", async () => {
-    const { parseDbtProfiles } = await import(
-      "../../src/altimate/native/connections/dbt-profiles"
-    )
+    const { parseDbtProfiles } = await import("../../src/altimate/native/connections/dbt-profiles")
     const profiles = await parseDbtProfiles()
     console.log(`  Found ${profiles.length} dbt profile connections`)
     if (profiles.length > 0) {
-      console.log(
-        `  Types: ${profiles.map((p: any) => p.config?.type || p.type).join(", ")}`,
-      )
+      console.log(`  Types: ${profiles.map((p: any) => p.config?.type || p.type).join(", ")}`)
     }
     expect(Array.isArray(profiles)).toBe(true)
   })
@@ -127,9 +135,7 @@ describe("dbt Profiles Auto-Discovery", () => {
     const r = await Dispatcher.call("dbt.profiles", {})
     expect(r.success).toBe(true)
     expect(Array.isArray(r.connections)).toBe(true)
-    console.log(
-      `  dbt.profiles found ${r.connection_count} connection(s)`,
-    )
+    console.log(`  dbt.profiles found ${r.connection_count} connection(s)`)
   })
 
   test("warehouse.discover includes dbt profiles", async () => {
@@ -137,9 +143,7 @@ describe("dbt Profiles Auto-Discovery", () => {
     const r = await Dispatcher.call("warehouse.discover", {})
     // dbt_profiles may be in the result
     if ((r as any).dbt_profiles && (r as any).dbt_profiles.length > 0) {
-      console.log(
-        `  warehouse.discover found ${(r as any).dbt_profiles.length} dbt profiles`,
-      )
+      console.log(`  warehouse.discover found ${(r as any).dbt_profiles.length} dbt profiles`)
     }
     expect(r).toHaveProperty("containers")
     expect(r).toHaveProperty("container_count")
@@ -156,9 +160,7 @@ describe.skipIf(!HAS_DBT)("dbt-First SQL Execution E2E", () => {
   })
 
   test("dbt adapter can be created from config", async () => {
-    const { read: readConfig } = await import(
-      "../../../dbt-tools/src/config"
-    )
+    const { read: readConfig } = await import("../../../dbt-tools/src/config")
     const cfg = await readConfig()
     if (!cfg) {
       console.log("  No dbt config — skipping adapter test")
@@ -173,14 +175,10 @@ describe.skipIf(!HAS_DBT)("dbt-First SQL Execution E2E", () => {
 
   test("sql.execute without warehouse tries dbt first", async () => {
     // Reset registry so no native connections are configured
-    const Registry = await import(
-      "../../src/altimate/native/connections/registry"
-    )
+    const Registry = await import("../../src/altimate/native/connections/registry")
     Registry.reset()
 
-    const { resetDbtAdapter } = await import(
-      "../../src/altimate/native/connections/register"
-    )
+    const { resetDbtAdapter } = await import("../../src/altimate/native/connections/register")
     resetDbtAdapter()
 
     const { Dispatcher } = await import("../../src/altimate/native")
@@ -207,9 +205,7 @@ describe.skipIf(!HAS_DBT)("Direct dbt Adapter Execution", () => {
 
   beforeAll(async () => {
     try {
-      const { read: readConfig } = await import(
-        "../../../dbt-tools/src/config"
-      )
+      const { read: readConfig } = await import("../../../dbt-tools/src/config")
       const cfg = await readConfig()
       if (!cfg) return
 
@@ -231,10 +227,7 @@ describe.skipIf(!HAS_DBT)("Direct dbt Adapter Execution", () => {
     if (!adapter) return
     try {
       // Try a simple query that works on most dbt projects
-      const r = await adapter.immediatelyExecuteSQL(
-        "SELECT COUNT(*) AS cnt FROM information_schema.tables",
-        "",
-      )
+      const r = await adapter.immediatelyExecuteSQL("SELECT COUNT(*) AS cnt FROM information_schema.tables", "")
       expect(r).toBeTruthy()
       console.log(`  Tables count query succeeded`)
     } catch (e: any) {
@@ -258,14 +251,10 @@ describe.skipIf(!HAS_DBT)("Direct dbt Adapter Execution", () => {
 // ---------------------------------------------------------------------------
 describe("dbt Fallback Behavior", () => {
   test("when dbt not configured, falls back to native driver silently", async () => {
-    const Registry = await import(
-      "../../src/altimate/native/connections/registry"
-    )
+    const Registry = await import("../../src/altimate/native/connections/registry")
     Registry.reset()
 
-    const { resetDbtAdapter } = await import(
-      "../../src/altimate/native/connections/register"
-    )
+    const { resetDbtAdapter } = await import("../../src/altimate/native/connections/register")
     resetDbtAdapter()
 
     // Set up a native DuckDB connection as fallback
@@ -284,9 +273,7 @@ describe("dbt Fallback Behavior", () => {
   })
 
   test("explicit warehouse param bypasses dbt entirely", async () => {
-    const Registry = await import(
-      "../../src/altimate/native/connections/registry"
-    )
+    const Registry = await import("../../src/altimate/native/connections/registry")
     Registry.reset()
     Registry.setConfigs({
       my_duck: { type: "duckdb", path: ":memory:" },
