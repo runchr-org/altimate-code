@@ -11,10 +11,9 @@ const USAGE = {
     info: "Get project info (paths, targets, version)",
     compile: "Compile a model (Jinja to SQL) --model <name>",
     "compile-query": "Compile a raw query --query <sql> [--model <name>]",
-    build: "Build a model --model <name> [--downstream]",
+    build: "Build project, or a single model with --model <name> [--downstream]",
     run: "Run a model --model <name> [--downstream]",
     test: "Test a model --model <name>",
-    "build-project": "Build entire project",
     execute: "Execute SQL --query <sql> [--model <name>] [--limit <n>]",
     columns: "Get columns of model --model <name>",
     "columns-source": "Get columns of source --source <name> --table <name>",
@@ -170,9 +169,6 @@ async function main() {
         break
       case "test":
         result = await (await import("./commands/build")).test(adapter, rest)
-        break
-      case "build-project":
-        result = await (await import("./commands/build")).project(adapter)
         break
       case "execute":
         result = await (await import("./commands/execute")).execute(adapter, rest)

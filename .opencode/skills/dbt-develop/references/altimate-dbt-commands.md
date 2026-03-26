@@ -20,7 +20,7 @@ altimate-dbt info                          # Project name, adapter, root
 ## Build & Run
 
 ```bash
-altimate-dbt build                                    # full project build (compile + run + test)
+altimate-dbt build                                  # full project build (compile + run + test)
 altimate-dbt build --model <name> [--downstream]   # build a single model
 altimate-dbt run --model <name> [--downstream]      # materialize only
 altimate-dbt test --model <name>                     # run tests only

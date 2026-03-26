@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from "bun:test"
-import { build, project } from "../src/commands/build"
+import { build } from "../src/commands/build"
 import type { DBTProjectIntegrationAdapter } from "@altimateai/dbt-integration"
 
 function makeAdapter(overrides: Partial<DBTProjectIntegrationAdapter> = {}): DBTProjectIntegrationAdapter {
@@ -43,5 +43,15 @@ describe("build command", () => {
       modelName: "orders",
       plusOperatorRight: "+",
     })
+  })
+
+  test("build surfaces stderr as error", async () => {
+    const adapter = makeAdapter({
+      unsafeBuildProjectImmediately: mock(() =>
+        Promise.resolve({ stdout: "partial output", stderr: "compilation error" }),
+      ),
+    })
+    const result = await build(adapter, [])
+    expect(result).toEqual({ error: "compilation error", stdout: "partial output" })
   })
 })
