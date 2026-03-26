@@ -68,11 +68,11 @@ log_info "Running Codex CLI (model: $CODEX_MODEL, timeout: ${CODEX_TIMEOUT}s)"
 CODEX_LOG="$LOG_DIR/codex-issue-${ISSUE_NUMBER}-$(date +%s).log"
 
 set +e
-timeout "$CODEX_TIMEOUT" codex exec "$PROMPT" \
+timeout "$CODEX_TIMEOUT" codex exec \
   --full-auto \
-  --dangerously-bypass-approvals-and-sandbox \
   --model "$CODEX_MODEL" \
-  -C "$WORKTREE_PATH" \
+  --cd "$WORKTREE_PATH" \
+  "$PROMPT" \
   2>&1 | tee "$CODEX_LOG"
 CODEX_EXIT=$?
 set -e
