@@ -44,9 +44,12 @@ description: Validate that two tables or query results are identical — or diag
 - `extra_columns` — columns to compare beyond keys (omit = compare all)
 - `algorithm` — `auto`, `joindiff`, `hashdiff`, `profile`, `cascade`
 - `where_clause` — filter applied to both tables
-- `partition_column` — split the table by this column and diff each group independently (recommended for large tables)
-- `partition_granularity` — `day` | `week` | `month` | `year` for date columns (default: `month`)
-- `partition_bucket_size` — for numeric columns: bucket width (e.g. `100000` splits by ranges of 100K)
+- `partition_column` — split the table by this column and diff each group independently (recommended for large tables); three modes:
+  - **Date column**: set `partition_granularity` → groups by truncated date periods
+  - **Numeric column**: set `partition_bucket_size` → groups by equal-width key ranges
+  - **Categorical column**: set neither → groups by distinct values (strings, enums, booleans like `status`, `region`, `country`)
+- `partition_granularity` — `day` | `week` | `month` | `year` — only for date columns
+- `partition_bucket_size` — bucket width for numeric columns (e.g. `100000`)
 
 > **CRITICAL — Algorithm choice:**
 > - If `source_warehouse` ≠ `target_warehouse` → **always use `hashdiff`** (or `auto`).
@@ -141,6 +144,13 @@ data_diff(source="orders", target="orders",
   key_columns=["o_orderkey"],
   source_warehouse="pg_source", target_warehouse="pg_target",
   partition_column="o_orderkey", partition_bucket_size=100000,
+  algorithm="hashdiff")
+
+// Categorical column — partition by distinct status values ('O', 'F', 'P')
+data_diff(source="orders", target="orders",
+  key_columns=["o_orderkey"],
+  source_warehouse="pg_source", target_warehouse="pg_target",
+  partition_column="o_orderstatus",   // no granularity or bucket_size needed
   algorithm="hashdiff")
 ```
 

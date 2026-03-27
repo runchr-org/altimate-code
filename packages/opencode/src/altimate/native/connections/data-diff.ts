@@ -145,6 +145,21 @@ function dateTruncExpr(granularity: string, column: string, dialect: string): st
 }
 
 /**
+ * Determine the partition mode based on which params are provided.
+ * - "date"        → partition_granularity is set (or column looks like a date)
+ * - "numeric"     → partition_bucket_size is set
+ * - "categorical" → neither — use DISTINCT values directly (string, enum, boolean)
+ */
+function partitionMode(
+  granularity: string | undefined,
+  bucketSize: number | undefined,
+): "date" | "numeric" | "categorical" {
+  if (bucketSize != null) return "numeric"
+  if (granularity != null) return "date"
+  return "categorical"
+}
+
+/**
  * Build SQL to discover distinct partition values from the source table.
  */
 function buildPartitionDiscoverySQL(
@@ -155,16 +170,19 @@ function buildPartitionDiscoverySQL(
   dialect: string,
   whereClause?: string,
 ): string {
-  const isNumeric = bucketSize != null
+  const where = whereClause ? `WHERE ${whereClause}` : ""
+  const mode = partitionMode(granularity, bucketSize)
 
   let expr: string
-  if (isNumeric) {
+  if (mode === "numeric") {
     expr = `FLOOR(${partitionColumn} / ${bucketSize}) * ${bucketSize}`
+  } else if (mode === "date") {
+    expr = dateTruncExpr(granularity!, partitionColumn, dialect)
   } else {
-    expr = dateTruncExpr(granularity ?? "month", partitionColumn, dialect)
+    // categorical — raw distinct values, no transformation
+    expr = partitionColumn
   }
 
-  const where = whereClause ? `WHERE ${whereClause}` : ""
   return `SELECT DISTINCT ${expr} AS _p FROM ${table} ${where} ORDER BY _p`
 }
 
@@ -178,13 +196,22 @@ function buildPartitionWhereClause(
   bucketSize: number | undefined,
   dialect: string,
 ): string {
-  if (bucketSize != null) {
+  const mode = partitionMode(granularity, bucketSize)
+
+  if (mode === "numeric") {
     const lo = Number(partitionValue)
-    const hi = lo + bucketSize
+    const hi = lo + bucketSize!
     return `${partitionColumn} >= ${lo} AND ${partitionColumn} < ${hi}`
   }
 
-  const expr = dateTruncExpr(granularity ?? "month", partitionColumn, dialect)
+  if (mode === "categorical") {
+    // Quote the value — works for strings, enums, booleans
+    const escaped = partitionValue.replace(/'/g, "''")
+    return `${partitionColumn} = '${escaped}'`
+  }
+
+  // date mode
+  const expr = dateTruncExpr(granularity!, partitionColumn, dialect)
 
   // Cast the literal appropriately per dialect
   switch (dialect) {

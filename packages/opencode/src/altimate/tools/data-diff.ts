@@ -55,18 +55,20 @@ export const DataDiffTool = Tool.define("data_diff", {
       .optional()
       .describe(
         "Column to partition on before diffing. Splits the table into groups and diffs each independently. " +
-        "Use for large tables to get faster, more precise results. " +
-        "Examples: 'l_shipdate' (date), 'l_orderkey' (numeric). " +
+        "Three modes depending on which other params you set:\n" +
+        "  • Date column   → set partition_granularity (day/week/month/year). E.g. partition_column='l_shipdate', partition_granularity='month'\n" +
+        "  • Numeric column → set partition_bucket_size. E.g. partition_column='l_orderkey', partition_bucket_size=100000\n" +
+        "  • Categorical   → set neither. Works for string/enum/boolean columns like 'status', 'region', 'country'. Groups by distinct values.\n" +
         "Results are aggregated with a per-partition breakdown showing which groups have differences.",
       ),
     partition_granularity: z
       .enum(["day", "week", "month", "year"])
       .optional()
-      .describe("Granularity for date partition columns. Defaults to 'month'."),
+      .describe("For date partition columns: truncation granularity. Omit for numeric or categorical columns."),
     partition_bucket_size: z
       .number()
       .optional()
-      .describe("For numeric partition columns: size of each bucket. E.g. 100000 splits orders into ranges of 100K keys."),
+      .describe("For numeric partition columns: size of each bucket. E.g. 100000 splits l_orderkey into ranges of 100K. Omit for date or categorical columns."),
   }),
   async execute(args, ctx) {
     // Require read permission — data diff executes SELECT queries
