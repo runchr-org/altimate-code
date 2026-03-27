@@ -1,0 +1,54 @@
+# Verdaccio-based sanity suite: tests the real npm install -g flow
+# Usage: docker compose -f test/sanity/docker-compose.verdaccio.yml up --build --abort-on-container-exit --exit-code-from sanity
+services:
+  verdaccio:
+    image: verdaccio/verdaccio:5
+    volumes:
+      - ./verdaccio/config.yaml:/verdaccio/conf/config.yaml
+    ports:
+      - "127.0.0.1:4873:4873"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O/dev/null", "http://0.0.0.0:4873/-/ping"]
+      interval: 3s
+      retries: 10
+
+  sanity:
+    build:
+      context: ../..
+      dockerfile: test/sanity/Dockerfile.verdaccio
+    environment:
+      - REGISTRY_URL=http://verdaccio:4873
+      - ANTHROPIC_API_KEY
+      - ALTIMATE_CODE_CONN_SNOWFLAKE_TEST
+      - TEST_PG_HOST=postgres
+      - TEST_PG_PORT=5432
+      - TEST_PG_PASSWORD=testpass123
+      - TEST_MONGODB_HOST=mongodb
+      - TEST_MONGODB_PORT=27017
+    depends_on:
+      verdaccio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: testpass123
+    ports:
+      - "127.0.0.1:15432:5432"
+    healthcheck:
+      test: pg_isready
+      interval: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "127.0.0.1:17017:27017"
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" --quiet
+      interval: 5s
+      retries: 10

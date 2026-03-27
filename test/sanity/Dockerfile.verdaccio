@@ -1,0 +1,42 @@
+FROM oven/bun:1.3.10-debian
+
+# System deps (what a real user would have)
+RUN apt-get update && apt-get install -y \
+    git python3 python3-pip python3-venv curl sqlite3 npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# dbt in venv (matches real user setup)
+RUN python3 -m venv /opt/dbt && \
+    /opt/dbt/bin/pip install --quiet dbt-core==1.11.7 dbt-duckdb==1.10.1 dbt-postgres==1.10.0
+ENV PATH="/opt/dbt/bin:$PATH"
+
+# Fresh user, clean HOME — simulates new user
+ENV HOME=/home/testuser
+RUN useradd -m testuser
+USER testuser
+WORKDIR /home/testuser
+
+# ── Copy build artifacts (pre-built by `bun run build`) ────────
+COPY --chown=testuser packages/opencode/dist/ /home/testuser/build/packages/opencode/dist/
+COPY --chown=testuser packages/opencode/bin/ /home/testuser/build/packages/opencode/bin/
+COPY --chown=testuser packages/opencode/script/postinstall.mjs /home/testuser/build/packages/opencode/script/postinstall.mjs
+COPY --chown=testuser packages/opencode/package.json /home/testuser/build/packages/opencode/package.json
+COPY --chown=testuser packages/dbt-tools/dist/ /home/testuser/build/packages/dbt-tools/dist/
+COPY --chown=testuser packages/dbt-tools/bin/ /home/testuser/build/packages/dbt-tools/bin/
+COPY --chown=testuser .opencode/skills/ /home/testuser/build/.opencode/skills/
+COPY --chown=testuser LICENSE /home/testuser/build/LICENSE
+COPY --chown=testuser CHANGELOG.md /home/testuser/build/CHANGELOG.md
+COPY --chown=testuser README.md /home/testuser/build/README.md
+
+# Copy test scripts and entrypoint
+COPY --chown=testuser test/sanity/ /home/testuser/sanity/
+RUN chmod +x /home/testuser/sanity/run.sh \
+    /home/testuser/sanity/phases/*.sh \
+    /home/testuser/sanity/pr-tests/*.sh \
+    /home/testuser/sanity/lib/*.sh
+
+# Copy the publish-and-install entrypoint
+COPY --chown=testuser test/sanity/verdaccio/entrypoint.sh /home/testuser/entrypoint.sh
+RUN chmod +x /home/testuser/entrypoint.sh
+
+ENTRYPOINT ["/home/testuser/entrypoint.sh"]

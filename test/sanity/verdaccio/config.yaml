@@ -1,0 +1,39 @@
+# Verdaccio config for sanity testing — permissive local registry
+# Anonymous publish enabled for test infrastructure only.
+storage: /verdaccio/storage
+auth:
+  htpasswd:
+    file: /verdaccio/conf/htpasswd
+    max_users: -1
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+packages:
+  # Platform binaries — must be published locally, never proxy to npmjs
+  "@altimateai/altimate-code-*":
+    access: $all
+    publish: $all
+    unpublish: $all
+    # no proxy: fail fast if binary not published locally
+  # Other @altimateai packages (e.g., altimate-core) — proxy to npmjs
+  "@altimateai/*":
+    access: $all
+    publish: $all
+    proxy: npmjs
+  # Unscoped altimate-code — must be published locally
+  "altimate-code":
+    access: $all
+    publish: $all
+    unpublish: $all
+    # no proxy: fail fast if main package not published locally
+  # Everything else — proxy to npmjs
+  "**":
+    access: $all
+    proxy: npmjs
+max_body_size: 500mb
+server:
+  keepAliveTimeout: 60
+log:
+  type: stdout
+  format: pretty
+  level: warn
