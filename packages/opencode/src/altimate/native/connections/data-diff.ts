@@ -229,6 +229,9 @@ function buildPartitionWhereClause(
 
 /**
  * Extract DiffStats from a successful outcome (if present).
+ *
+ * Rust serializes ReladiffOutcome as: {mode: "diff", diff_rows: [...], stats: {...}}
+ * stats fields: rows_table1, rows_table2, exclusive_table1, exclusive_table2, updated, unchanged
  */
 function extractStats(outcome: unknown): {
   rows_source: number
@@ -239,22 +242,17 @@ function extractStats(outcome: unknown): {
   const o = outcome as any
   if (!o) return { rows_source: 0, rows_target: 0, differences: 0, status: "identical" }
 
-  if (o.Match) {
+  if (o.mode === "diff") {
+    const s = o.stats ?? {}
+    const exclusive1 = Number(s.exclusive_table1 ?? 0)
+    const exclusive2 = Number(s.exclusive_table2 ?? 0)
+    const updated = Number(s.updated ?? 0)
+    const differences = exclusive1 + exclusive2 + updated
     return {
-      rows_source: o.Match.row_count ?? 0,
-      rows_target: o.Match.row_count ?? 0,
-      differences: 0,
-      status: "identical",
-    }
-  }
-
-  if (o.Diff) {
-    const d = o.Diff
-    return {
-      rows_source: d.total_source_rows ?? 0,
-      rows_target: d.total_target_rows ?? 0,
-      differences: (d.rows_only_in_source ?? 0) + (d.rows_only_in_target ?? 0) + (d.rows_updated ?? 0),
-      status: "differ",
+      rows_source: Number(s.rows_table1 ?? 0),
+      rows_target: Number(s.rows_table2 ?? 0),
+      differences,
+      status: differences > 0 ? "differ" : "identical",
     }
   }
 
@@ -262,34 +260,36 @@ function extractStats(outcome: unknown): {
 }
 
 /**
- * Merge two Diff outcomes into one aggregated Diff outcome.
+ * Merge two diff outcomes into one aggregated outcome.
+ *
+ * Both outcomes use the Rust shape: {mode: "diff", diff_rows: [...], stats: {...}}
  */
 function mergeOutcomes(accumulated: unknown, next: unknown): unknown {
+  if (!accumulated) return next
+  if (!next) return accumulated
+
   const a = accumulated as any
   const n = next as any
 
-  const aD = a?.Diff ?? (a?.Match ? { total_source_rows: a.Match.row_count, total_target_rows: a.Match.row_count, rows_only_in_source: 0, rows_only_in_target: 0, rows_updated: 0, rows_identical: a.Match.row_count, sample_diffs: [] } : null)
-  const nD = n?.Diff ?? (n?.Match ? { total_source_rows: n.Match.row_count, total_target_rows: n.Match.row_count, rows_only_in_source: 0, rows_only_in_target: 0, rows_updated: 0, rows_identical: n.Match.row_count, sample_diffs: [] } : null)
+  const aS = a.stats ?? {}
+  const nS = n.stats ?? {}
 
-  if (!aD && !nD) return { Match: { row_count: 0 } }
-  if (!aD) return next
-  if (!nD) return accumulated
+  const rows_table1 = (Number(aS.rows_table1) || 0) + (Number(nS.rows_table1) || 0)
+  const rows_table2 = (Number(aS.rows_table2) || 0) + (Number(nS.rows_table2) || 0)
+  const exclusive_table1 = (Number(aS.exclusive_table1) || 0) + (Number(nS.exclusive_table1) || 0)
+  const exclusive_table2 = (Number(aS.exclusive_table2) || 0) + (Number(nS.exclusive_table2) || 0)
+  const updated = (Number(aS.updated) || 0) + (Number(nS.updated) || 0)
+  const unchanged = (Number(aS.unchanged) || 0) + (Number(nS.unchanged) || 0)
 
-  const merged = {
-    total_source_rows: (aD.total_source_rows ?? 0) + (nD.total_source_rows ?? 0),
-    total_target_rows: (aD.total_target_rows ?? 0) + (nD.total_target_rows ?? 0),
-    rows_only_in_source: (aD.rows_only_in_source ?? 0) + (nD.rows_only_in_source ?? 0),
-    rows_only_in_target: (aD.rows_only_in_target ?? 0) + (nD.rows_only_in_target ?? 0),
-    rows_updated: (aD.rows_updated ?? 0) + (nD.rows_updated ?? 0),
-    rows_identical: (aD.rows_identical ?? 0) + (nD.rows_identical ?? 0),
-    sample_diffs: [...(aD.sample_diffs ?? []), ...(nD.sample_diffs ?? [])].slice(0, 20),
+  const totalRows = rows_table1 + rows_table2
+  const totalDiff = exclusive_table1 + exclusive_table2 + updated
+  const diff_percent = totalRows > 0 ? (totalDiff / totalRows) * 100 : 0
+
+  return {
+    mode: "diff",
+    diff_rows: [...(a.diff_rows ?? []), ...(n.diff_rows ?? [])].slice(0, 100),
+    stats: { rows_table1, rows_table2, exclusive_table1, exclusive_table2, updated, unchanged, diff_percent },
   }
-
-  const totalDiff = merged.rows_only_in_source + merged.rows_only_in_target + merged.rows_updated
-  if (totalDiff === 0) {
-    return { Match: { row_count: merged.total_source_rows, algorithm: "partitioned" } }
-  }
-  return { Diff: merged }
 }
 
 /**

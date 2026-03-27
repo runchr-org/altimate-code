@@ -129,16 +129,23 @@ export const DataDiffTool = Tool.define("data_diff", {
 
 function summarize(outcome: any): string {
   if (!outcome) return "complete"
-  if (outcome.Match) return "IDENTICAL ✓"
-  if (outcome.Diff) {
-    const r = outcome.Diff
+
+  // Rust serializes ReladiffOutcome as {mode: "diff"|"profile"|..., stats: {...}, diff_rows: [...]}
+  if (outcome.mode === "diff") {
+    const s = outcome.stats ?? {}
+    const e1 = Number(s.exclusive_table1 ?? 0)
+    const e2 = Number(s.exclusive_table2 ?? 0)
+    const upd = Number(s.updated ?? 0)
+    if (e1 === 0 && e2 === 0 && upd === 0) return "IDENTICAL ✓"
     const parts: string[] = []
-    if (r.rows_only_in_source > 0) parts.push(`${r.rows_only_in_source} only in source`)
-    if (r.rows_only_in_target > 0) parts.push(`${r.rows_only_in_target} only in target`)
-    if (r.rows_updated > 0) parts.push(`${r.rows_updated} updated`)
-    return parts.length ? parts.join(", ") : "differences found"
+    if (e1 > 0) parts.push(`${e1} only in source`)
+    if (e2 > 0) parts.push(`${e2} only in target`)
+    if (upd > 0) parts.push(`${upd} updated`)
+    return parts.join(", ")
   }
-  if (outcome.Profile) return "profile complete"
+  if (outcome.mode === "profile") return "profile complete"
+  if (outcome.mode === "cascade") return "cascade complete"
+
   return "complete"
 }
 
@@ -147,45 +154,54 @@ function formatOutcome(outcome: any, source: string, target: string): string {
 
   const lines: string[] = []
 
-  if (outcome.Match) {
-    lines.push(`✓ Tables are IDENTICAL`)
-    const m = outcome.Match
-    if (m.row_count != null) lines.push(`  Rows checked: ${m.row_count.toLocaleString()}`)
-    if (m.algorithm) lines.push(`  Algorithm: ${m.algorithm}`)
-    return lines.join("\n")
-  }
+  // Rust serializes ReladiffOutcome as {mode: "diff", diff_rows: [...], stats: {...}}
+  // stats: rows_table1, rows_table2, exclusive_table1, exclusive_table2, updated, unchanged
+  if (outcome.mode === "diff") {
+    const s = outcome.stats ?? {}
+    const rows1 = Number(s.rows_table1 ?? 0)
+    const rows2 = Number(s.rows_table2 ?? 0)
+    const e1 = Number(s.exclusive_table1 ?? 0)
+    const e2 = Number(s.exclusive_table2 ?? 0)
+    const updated = Number(s.updated ?? 0)
+    const unchanged = Number(s.unchanged ?? 0)
 
-  if (outcome.Diff) {
-    const r = outcome.Diff
+    if (e1 === 0 && e2 === 0 && updated === 0) {
+      lines.push(`✓ Tables are IDENTICAL`)
+      if (rows1 > 0) lines.push(`  Rows checked: ${rows1.toLocaleString()}`)
+      return lines.join("\n")
+    }
+
     lines.push(`✗ Tables DIFFER`)
     lines.push(``)
     lines.push(`  Source:  ${source}`)
     lines.push(`  Target:  ${target}`)
     lines.push(``)
 
-    if (r.total_source_rows != null) lines.push(`  Source rows:        ${r.total_source_rows.toLocaleString()}`)
-    if (r.total_target_rows != null) lines.push(`  Target rows:        ${r.total_target_rows.toLocaleString()}`)
-    if (r.rows_only_in_source > 0) lines.push(`  Only in source:     ${r.rows_only_in_source.toLocaleString()}`)
-    if (r.rows_only_in_target > 0) lines.push(`  Only in target:     ${r.rows_only_in_target.toLocaleString()}`)
-    if (r.rows_updated > 0) lines.push(`  Updated rows:       ${r.rows_updated.toLocaleString()}`)
-    if (r.rows_identical > 0) lines.push(`  Identical rows:     ${r.rows_identical.toLocaleString()}`)
+    if (rows1 > 0) lines.push(`  Source rows:        ${rows1.toLocaleString()}`)
+    if (rows2 > 0) lines.push(`  Target rows:        ${rows2.toLocaleString()}`)
+    if (e1 > 0) lines.push(`  Only in source:     ${e1.toLocaleString()}`)
+    if (e2 > 0) lines.push(`  Only in target:     ${e2.toLocaleString()}`)
+    if (updated > 0) lines.push(`  Updated rows:       ${updated.toLocaleString()}`)
+    if (unchanged > 0) lines.push(`  Identical rows:     ${unchanged.toLocaleString()}`)
 
-    if (r.sample_diffs?.length) {
+    const diffRows = outcome.diff_rows ?? []
+    if (diffRows.length > 0) {
       lines.push(``)
-      lines.push(`  Sample differences (first ${r.sample_diffs.length}):`)
-      for (const d of r.sample_diffs.slice(0, 5)) {
-        lines.push(`    key=${JSON.stringify(d.key)} col=${d.column}: ${d.source_value} → ${d.target_value}`)
+      lines.push(`  Sample differences (first ${Math.min(diffRows.length, 5)}):`)
+      for (const d of diffRows.slice(0, 5)) {
+        const label = d.sign === "-" ? "source only" : "target only"
+        lines.push(`    [${label}] ${d.values?.join(" | ")}`)
       }
     }
 
     return lines.join("\n")
   }
 
-  if (outcome.Profile) {
-    const p = outcome.Profile
+  if (outcome.mode === "profile") {
+    const cols = outcome.column_stats ?? outcome.columns ?? []
     lines.push(`Column Profile Comparison`)
     lines.push(``)
-    for (const col of p.columns ?? []) {
+    for (const col of cols) {
       const verdict = col.verdict === "match" ? "✓" : col.verdict === "within_tolerance" ? "~" : "✗"
       lines.push(`  ${verdict} ${col.column}: ${col.verdict}`)
       if (col.source_stats && col.target_stats) {
