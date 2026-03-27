@@ -7,7 +7,7 @@
  * This file is the bridge between that engine and altimate-code's drivers.
  */
 
-import type { DataDiffParams, DataDiffResult } from "../types"
+import type { DataDiffParams, DataDiffResult, PartitionDiffResult } from "../types"
 import * as Registry from "./registry"
 
 // ---------------------------------------------------------------------------
@@ -119,7 +119,238 @@ async function executeQuery(sql: string, warehouseName: string | undefined): Pro
 
 const MAX_STEPS = 200
 
+// ---------------------------------------------------------------------------
+// Partition support
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a DATE_TRUNC expression appropriate for the warehouse dialect.
+ */
+function dateTruncExpr(granularity: string, column: string, dialect: string): string {
+  const g = granularity.toLowerCase()
+  switch (dialect) {
+    case "bigquery":
+      return `DATE_TRUNC(${column}, ${g.toUpperCase()})`
+    case "clickhouse":
+      return `toStartOf${g.charAt(0).toUpperCase() + g.slice(1)}(${column})`
+    case "mysql":
+    case "mariadb": {
+      const fmt = { day: "%Y-%m-%d", week: "%Y-%u", month: "%Y-%m-01", year: "%Y-01-01" }[g] ?? "%Y-%m-01"
+      return `DATE_FORMAT(${column}, '${fmt}')`
+    }
+    default:
+      // Postgres, Snowflake, Redshift, DuckDB, etc.
+      return `DATE_TRUNC('${g}', ${column})`
+  }
+}
+
+/**
+ * Build SQL to discover distinct partition values from the source table.
+ */
+function buildPartitionDiscoverySQL(
+  table: string,
+  partitionColumn: string,
+  granularity: string | undefined,
+  bucketSize: number | undefined,
+  dialect: string,
+  whereClause?: string,
+): string {
+  const isNumeric = bucketSize != null
+
+  let expr: string
+  if (isNumeric) {
+    expr = `FLOOR(${partitionColumn} / ${bucketSize}) * ${bucketSize}`
+  } else {
+    expr = dateTruncExpr(granularity ?? "month", partitionColumn, dialect)
+  }
+
+  const where = whereClause ? `WHERE ${whereClause}` : ""
+  return `SELECT DISTINCT ${expr} AS _p FROM ${table} ${where} ORDER BY _p`
+}
+
+/**
+ * Build a WHERE clause that scopes to a single partition.
+ */
+function buildPartitionWhereClause(
+  partitionColumn: string,
+  partitionValue: string,
+  granularity: string | undefined,
+  bucketSize: number | undefined,
+  dialect: string,
+): string {
+  if (bucketSize != null) {
+    const lo = Number(partitionValue)
+    const hi = lo + bucketSize
+    return `${partitionColumn} >= ${lo} AND ${partitionColumn} < ${hi}`
+  }
+
+  const expr = dateTruncExpr(granularity ?? "month", partitionColumn, dialect)
+
+  // Cast the literal appropriately per dialect
+  switch (dialect) {
+    case "bigquery":
+      return `${expr} = '${partitionValue}'`
+    case "clickhouse":
+      return `${expr} = toDate('${partitionValue}')`
+    case "mysql":
+    case "mariadb":
+      return `${expr} = '${partitionValue}'`
+    default:
+      return `${expr} = '${partitionValue}'`
+  }
+}
+
+/**
+ * Extract DiffStats from a successful outcome (if present).
+ */
+function extractStats(outcome: unknown): {
+  rows_source: number
+  rows_target: number
+  differences: number
+  status: "identical" | "differ"
+} {
+  const o = outcome as any
+  if (!o) return { rows_source: 0, rows_target: 0, differences: 0, status: "identical" }
+
+  if (o.Match) {
+    return {
+      rows_source: o.Match.row_count ?? 0,
+      rows_target: o.Match.row_count ?? 0,
+      differences: 0,
+      status: "identical",
+    }
+  }
+
+  if (o.Diff) {
+    const d = o.Diff
+    return {
+      rows_source: d.total_source_rows ?? 0,
+      rows_target: d.total_target_rows ?? 0,
+      differences: (d.rows_only_in_source ?? 0) + (d.rows_only_in_target ?? 0) + (d.rows_updated ?? 0),
+      status: "differ",
+    }
+  }
+
+  return { rows_source: 0, rows_target: 0, differences: 0, status: "identical" }
+}
+
+/**
+ * Merge two Diff outcomes into one aggregated Diff outcome.
+ */
+function mergeOutcomes(accumulated: unknown, next: unknown): unknown {
+  const a = accumulated as any
+  const n = next as any
+
+  const aD = a?.Diff ?? (a?.Match ? { total_source_rows: a.Match.row_count, total_target_rows: a.Match.row_count, rows_only_in_source: 0, rows_only_in_target: 0, rows_updated: 0, rows_identical: a.Match.row_count, sample_diffs: [] } : null)
+  const nD = n?.Diff ?? (n?.Match ? { total_source_rows: n.Match.row_count, total_target_rows: n.Match.row_count, rows_only_in_source: 0, rows_only_in_target: 0, rows_updated: 0, rows_identical: n.Match.row_count, sample_diffs: [] } : null)
+
+  if (!aD && !nD) return { Match: { row_count: 0 } }
+  if (!aD) return next
+  if (!nD) return accumulated
+
+  const merged = {
+    total_source_rows: (aD.total_source_rows ?? 0) + (nD.total_source_rows ?? 0),
+    total_target_rows: (aD.total_target_rows ?? 0) + (nD.total_target_rows ?? 0),
+    rows_only_in_source: (aD.rows_only_in_source ?? 0) + (nD.rows_only_in_source ?? 0),
+    rows_only_in_target: (aD.rows_only_in_target ?? 0) + (nD.rows_only_in_target ?? 0),
+    rows_updated: (aD.rows_updated ?? 0) + (nD.rows_updated ?? 0),
+    rows_identical: (aD.rows_identical ?? 0) + (nD.rows_identical ?? 0),
+    sample_diffs: [...(aD.sample_diffs ?? []), ...(nD.sample_diffs ?? [])].slice(0, 20),
+  }
+
+  const totalDiff = merged.rows_only_in_source + merged.rows_only_in_target + merged.rows_updated
+  if (totalDiff === 0) {
+    return { Match: { row_count: merged.total_source_rows, algorithm: "partitioned" } }
+  }
+  return { Diff: merged }
+}
+
+/**
+ * Run a partitioned diff: discover partition values, diff each partition independently,
+ * then aggregate results.
+ */
+async function runPartitionedDiff(params: DataDiffParams): Promise<DataDiffResult> {
+  const resolveDialect = (warehouse: string | undefined): string => {
+    if (warehouse) {
+      const cfg = Registry.getConfig(warehouse)
+      return cfg?.type ?? "generic"
+    }
+    const warehouses = Registry.list().warehouses
+    return warehouses[0]?.type ?? "generic"
+  }
+
+  const sourceDialect = resolveDialect(params.source_warehouse)
+  const { table1Name } = resolveTableSources(params.source, params.target)
+
+  // Discover partition values from source
+  const discoverySql = buildPartitionDiscoverySQL(
+    table1Name,
+    params.partition_column!,
+    params.partition_granularity,
+    params.partition_bucket_size,
+    sourceDialect,
+    params.where_clause,
+  )
+
+  let partitionValues: string[]
+  try {
+    const rows = await executeQuery(discoverySql, params.source_warehouse)
+    partitionValues = rows.map((r) => String(r[0] ?? "")).filter(Boolean)
+  } catch (e) {
+    return { success: false, error: `Partition discovery failed: ${e}`, steps: 0 }
+  }
+
+  if (partitionValues.length === 0) {
+    return { success: true, steps: 1, outcome: { Match: { row_count: 0, algorithm: "partitioned" } }, partition_results: [] }
+  }
+
+  // Diff each partition
+  const partitionResults: PartitionDiffResult[] = []
+  let aggregatedOutcome: unknown = null
+  let totalSteps = 1
+
+  for (const pVal of partitionValues) {
+    const partWhere = buildPartitionWhereClause(
+      params.partition_column!,
+      pVal,
+      params.partition_granularity,
+      params.partition_bucket_size,
+      sourceDialect,
+    )
+    const fullWhere = params.where_clause ? `(${params.where_clause}) AND (${partWhere})` : partWhere
+
+    const result = await runDataDiff({
+      ...params,
+      where_clause: fullWhere,
+      partition_column: undefined, // prevent recursion
+    })
+
+    totalSteps += result.steps
+
+    if (!result.success) {
+      partitionResults.push({ partition: pVal, rows_source: 0, rows_target: 0, differences: 0, status: "error", error: result.error })
+      continue
+    }
+
+    const stats = extractStats(result.outcome)
+    partitionResults.push({ partition: pVal, ...stats })
+    aggregatedOutcome = aggregatedOutcome == null ? result.outcome : mergeOutcomes(aggregatedOutcome, result.outcome)
+  }
+
+  return {
+    success: true,
+    steps: totalSteps,
+    outcome: aggregatedOutcome ?? { Match: { row_count: 0, algorithm: "partitioned" } },
+    partition_results: partitionResults,
+  }
+}
+
 export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResult> {
+  // Dispatch to partitioned diff if partition_column is set
+  if (params.partition_column) {
+    return runPartitionedDiff(params)
+  }
+
   // Dynamically import NAPI module (not available in test environments without the binary)
   let DataParitySession: new (specJson: string) => {
     start(): string
