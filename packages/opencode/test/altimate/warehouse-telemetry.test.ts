@@ -169,6 +169,19 @@ describe("warehouse telemetry: detectAuthMethod", () => {
     expect(connectEvent).toBeDefined()
     expect(connectEvent.auth_method).toBe("unknown")
   })
+
+  // MongoDB without password or connection_string falls through the generic
+  // checks and hits the MongoDB-specific branch at registry.ts:229, which
+  // defaults to "connection_string" (the typical MongoDB auth pattern).
+  // We call detectAuthMethod directly because "mongodb" is a valid driver
+  // type, so Registry.get would attempt a real connection.
+  test("detects connection_string for mongodb without password", () => {
+    expect(Registry.detectAuthMethod({ type: "mongodb", host: "localhost", port: 27017 })).toBe("connection_string")
+  })
+
+  test("detects connection_string for mongo type alias without password", () => {
+    expect(Registry.detectAuthMethod({ type: "mongo", host: "localhost" })).toBe("connection_string")
+  })
 })
 
 // ---------------------------------------------------------------------------

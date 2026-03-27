@@ -652,6 +652,128 @@ describe("normalizeConfig — DuckDB/SQLite passthrough", () => {
 // normalizeConfig — Snowflake private_key edge cases
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// normalizeConfig — MongoDB aliases
+// ---------------------------------------------------------------------------
+
+describe("normalizeConfig — MongoDB", () => {
+  test("canonical mongodb config passes through unchanged", () => {
+    const config = {
+      type: "mongodb",
+      host: "localhost",
+      port: 27017,
+      database: "mydb",
+      user: "admin",
+      password: "secret",
+      connection_string: "mongodb://localhost/mydb",
+      auth_source: "admin",
+      replica_set: "rs0",
+      direct_connection: true,
+      connect_timeout: 5000,
+      server_selection_timeout: 10000,
+    }
+    expect(normalizeConfig(config)).toEqual(config)
+  })
+
+  test("connectionString → connection_string", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      connectionString: "mongodb://localhost:27017/mydb",
+    })
+    expect(result.connection_string).toBe("mongodb://localhost:27017/mydb")
+    expect(result.connectionString).toBeUndefined()
+  })
+
+  test("uri → connection_string", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      uri: "mongodb://localhost:27017/mydb",
+    })
+    expect(result.connection_string).toBe("mongodb://localhost:27017/mydb")
+    expect(result.uri).toBeUndefined()
+  })
+
+  test("url → connection_string", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      url: "mongodb+srv://cluster0.example.net/mydb",
+    })
+    expect(result.connection_string).toBe("mongodb+srv://cluster0.example.net/mydb")
+    expect(result.url).toBeUndefined()
+  })
+
+  test("authSource → auth_source", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      authSource: "admin",
+    })
+    expect(result.auth_source).toBe("admin")
+    expect(result.authSource).toBeUndefined()
+  })
+
+  test("replicaSet → replica_set", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      replicaSet: "rs0",
+    })
+    expect(result.replica_set).toBe("rs0")
+    expect(result.replicaSet).toBeUndefined()
+  })
+
+  test("directConnection → direct_connection", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      directConnection: true,
+    })
+    expect(result.direct_connection).toBe(true)
+    expect(result.directConnection).toBeUndefined()
+  })
+
+  test("connectTimeoutMS → connect_timeout", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      connectTimeoutMS: 5000,
+    })
+    expect(result.connect_timeout).toBe(5000)
+    expect(result.connectTimeoutMS).toBeUndefined()
+  })
+
+  test("serverSelectionTimeoutMS → server_selection_timeout", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      serverSelectionTimeoutMS: 15000,
+    })
+    expect(result.server_selection_timeout).toBe(15000)
+    expect(result.serverSelectionTimeoutMS).toBeUndefined()
+  })
+
+  test("mongo type alias resolves MongoDB aliases", () => {
+    const result = normalizeConfig({
+      type: "mongo",
+      uri: "mongodb://localhost/test",
+      authSource: "admin",
+    })
+    expect(result.connection_string).toBe("mongodb://localhost/test")
+    expect(result.auth_source).toBe("admin")
+    expect(result.uri).toBeUndefined()
+    expect(result.authSource).toBeUndefined()
+  })
+
+  test("connection_string takes precedence over uri alias", () => {
+    const result = normalizeConfig({
+      type: "mongodb",
+      connection_string: "mongodb://correct/db",
+      uri: "mongodb://wrong/db",
+    })
+    expect(result.connection_string).toBe("mongodb://correct/db")
+    expect(result.uri).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// normalizeConfig — Snowflake private_key edge cases
+// ---------------------------------------------------------------------------
+
 describe("normalizeConfig — Snowflake private_key edge cases", () => {
   test("opaque string without path indicators stays as private_key", () => {
     const result = normalizeConfig({
