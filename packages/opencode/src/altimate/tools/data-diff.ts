@@ -50,6 +50,23 @@ export const DataDiffTool = Tool.define("data_diff", {
       .number()
       .optional()
       .describe("Tolerance for timestamp comparisons in milliseconds"),
+    partition_column: z
+      .string()
+      .optional()
+      .describe(
+        "Column to partition on before diffing. Splits the table into groups and diffs each independently. " +
+        "Use for large tables to get faster, more precise results. " +
+        "Examples: 'l_shipdate' (date), 'l_orderkey' (numeric). " +
+        "Results are aggregated with a per-partition breakdown showing which groups have differences.",
+      ),
+    partition_granularity: z
+      .enum(["day", "week", "month", "year"])
+      .optional()
+      .describe("Granularity for date partition columns. Defaults to 'month'."),
+    partition_bucket_size: z
+      .number()
+      .optional()
+      .describe("For numeric partition columns: size of each bucket. E.g. 100000 splits orders into ranges of 100K keys."),
   }),
   async execute(args, ctx) {
     // Require read permission — data diff executes SELECT queries
@@ -72,6 +89,9 @@ export const DataDiffTool = Tool.define("data_diff", {
         where_clause: args.where_clause,
         numeric_tolerance: args.numeric_tolerance,
         timestamp_tolerance_ms: args.timestamp_tolerance_ms,
+        partition_column: args.partition_column,
+        partition_granularity: args.partition_granularity,
+        partition_bucket_size: args.partition_bucket_size,
       })
 
       if (!result.success) {
@@ -83,7 +103,11 @@ export const DataDiffTool = Tool.define("data_diff", {
       }
 
       const outcome = result.outcome as any
-      const output = formatOutcome(outcome, args.source, args.target)
+      let output = formatOutcome(outcome, args.source, args.target)
+
+      if (result.partition_results?.length) {
+        output += formatPartitionResults(result.partition_results, args.partition_column!)
+      }
 
       return {
         title: `Data diff: ${summarize(outcome)}`,
@@ -171,4 +195,32 @@ function formatOutcome(outcome: any, source: string, target: string): string {
   }
 
   return JSON.stringify(outcome, null, 2)
+}
+
+function formatPartitionResults(
+  partitions: Array<{ partition: string; rows_source: number; rows_target: number; differences: number; status: string; error?: string }>,
+  partitionColumn: string,
+): string {
+  const lines: string[] = ["", `Partition breakdown (by ${partitionColumn}):`]
+
+  const clean = partitions.filter((p) => p.status === "identical")
+  const dirty = partitions.filter((p) => p.status === "differ")
+  const errored = partitions.filter((p) => p.status === "error")
+
+  if (dirty.length === 0 && errored.length === 0) {
+    lines.push(`  ✓ All ${partitions.length} partitions identical`)
+    return lines.join("\n")
+  }
+
+  for (const p of dirty) {
+    lines.push(`  ✗ ${p.partition}  source=${p.rows_source.toLocaleString()}  target=${p.rows_target.toLocaleString()}  diff=${p.differences.toLocaleString()}`)
+  }
+  for (const p of errored) {
+    lines.push(`  ! ${p.partition}  ERROR: ${p.error}`)
+  }
+  if (clean.length > 0) {
+    lines.push(`  ✓ ${clean.length} partition${clean.length === 1 ? "" : "s"} identical`)
+  }
+
+  return lines.join("\n")
 }

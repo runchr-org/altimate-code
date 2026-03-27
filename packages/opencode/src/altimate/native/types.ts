@@ -985,6 +985,39 @@ export interface DataDiffParams {
   numeric_tolerance?: number
   /** Timestamp tolerance in milliseconds */
   timestamp_tolerance_ms?: number
+  /**
+   * Column to partition on before diffing. The table is split into groups by
+   * this column and each group is diffed independently. Results are aggregated.
+   * Use for large tables where bisection alone is too slow or imprecise.
+   *
+   * Examples: "l_shipdate" (date column), "l_orderkey" (numeric column)
+   */
+  partition_column?: string
+  /**
+   * Granularity for date partition columns: "day" | "week" | "month" | "year".
+   * For numeric columns, ignored — use partition_bucket_size instead.
+   * Defaults to "month".
+   */
+  partition_granularity?: "day" | "week" | "month" | "year"
+  /**
+   * For numeric partition columns: size of each bucket.
+   * E.g. 100000 splits l_orderkey into [0, 100000), [100000, 200000), …
+   */
+  partition_bucket_size?: number
+}
+
+export interface PartitionDiffResult {
+  /** The partition value (date string or numeric bucket start) */
+  partition: string
+  /** Source row count in this partition */
+  rows_source: number
+  /** Target row count in this partition */
+  rows_target: number
+  /** Total differences found (exclusive + updated) */
+  differences: number
+  /** "identical" | "differ" | "error" */
+  status: "identical" | "differ" | "error"
+  error?: string
 }
 
 export interface DataDiffResult {
@@ -992,6 +1025,8 @@ export interface DataDiffResult {
   steps: number
   outcome?: unknown
   error?: string
+  /** Per-partition breakdown when partition_column is used */
+  partition_results?: PartitionDiffResult[]
 }
 
 // --- Method registry ---

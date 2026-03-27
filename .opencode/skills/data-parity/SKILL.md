@@ -44,6 +44,9 @@ description: Validate that two tables or query results are identical — or diag
 - `extra_columns` — columns to compare beyond keys (omit = compare all)
 - `algorithm` — `auto`, `joindiff`, `hashdiff`, `profile`, `cascade`
 - `where_clause` — filter applied to both tables
+- `partition_column` — split the table by this column and diff each group independently (recommended for large tables)
+- `partition_granularity` — `day` | `week` | `month` | `year` for date columns (default: `month`)
+- `partition_bucket_size` — for numeric columns: bucket width (e.g. `100000` splits by ranges of 100K)
 
 > **CRITICAL — Algorithm choice:**
 > - If `source_warehouse` ≠ `target_warehouse` → **always use `hashdiff`** (or `auto`).
@@ -117,8 +120,31 @@ SELECT COUNT(*) FROM orders
 
 Use this to choose the algorithm:
 - **< 1M rows**: `joindiff` (same DB) or `hashdiff` (cross-DB) — either is fine
-- **1M–100M rows**: `hashdiff` or `cascade`
-- **> 100M rows**: `hashdiff` with a `where_clause` date filter to validate a recent window first
+- **1M–100M rows**: `hashdiff` with `partition_column` for faster, more precise results
+- **> 100M rows**: `hashdiff` + `partition_column` — required; bisection alone may miss rows at this scale
+
+**When to use `partition_column`:**
+- Table has a natural time or key column (e.g. `created_at`, `order_id`, `event_date`)
+- Table has > 500K rows and bisection is slow or returning incomplete results
+- You need per-partition visibility (which month/range has the problem)
+
+```
+// Date column — partition by month
+data_diff(source="lineitem", target="lineitem",
+  key_columns=["l_orderkey", "l_linenumber"],
+  source_warehouse="pg_source", target_warehouse="pg_target",
+  partition_column="l_shipdate", partition_granularity="month",
+  algorithm="hashdiff")
+
+// Numeric column — partition by key ranges of 100K
+data_diff(source="orders", target="orders",
+  key_columns=["o_orderkey"],
+  source_warehouse="pg_source", target_warehouse="pg_target",
+  partition_column="o_orderkey", partition_bucket_size=100000,
+  algorithm="hashdiff")
+```
+
+Output includes an aggregate diff plus a per-partition table showing exactly which ranges differ.
 
 ### Step 4: Profile first for unknown tables
 
