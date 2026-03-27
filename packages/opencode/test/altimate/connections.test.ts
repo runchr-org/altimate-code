@@ -11,8 +11,10 @@ afterAll(() => { delete process.env.ALTIMATE_TELEMETRY_DISABLED })
 
 import * as Registry from "../../src/altimate/native/connections/registry"
 import * as CredentialStore from "../../src/altimate/native/connections/credential-store"
-import { parseDbtProfiles } from "../../src/altimate/native/connections/dbt-profiles"
-import { discoverContainers } from "../../src/altimate/native/connections/docker-discovery"
+import { parseDbtProfiles, dbtConnectionsToConfigs } from "../../src/altimate/native/connections/dbt-profiles"
+import { discoverContainers, containerToConfig } from "../../src/altimate/native/connections/docker-discovery"
+import { detectAuthMethod, categorizeConnectionError } from "../../src/altimate/native/connections/registry"
+import type { DockerContainer } from "../../src/altimate/native/types"
 import { registerAll } from "../../src/altimate/native/connections/register"
 
 // ---------------------------------------------------------------------------
@@ -264,6 +266,212 @@ snow:
 })
 
 // ---------------------------------------------------------------------------
+// dbt profiles parser — advanced parsing
+// ---------------------------------------------------------------------------
+
+describe("dbt profiles parser: edge cases", () => {
+  test("env_var with default value resolves to default when env var is missing", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    delete process.env.DBT_TEST_NONEXISTENT_VAR
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-test-"))
+    const profilesPath = path.join(tmpDir, "profiles.yml")
+
+    fs.writeFileSync(
+      profilesPath,
+      `
+myproject:
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      password: "{{ env_var('DBT_TEST_NONEXISTENT_VAR', 'fallback_pw') }}"
+      dbname: testdb
+`,
+    )
+
+    try {
+      const connections = await parseDbtProfiles(profilesPath)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].config.password).toBe("fallback_pw")
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+
+  test("spark adapter maps to databricks", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-test-"))
+    const profilesPath = path.join(tmpDir, "profiles.yml")
+
+    fs.writeFileSync(
+      profilesPath,
+      `
+spark_project:
+  outputs:
+    prod:
+      type: spark
+      server_hostname: my-spark-cluster.databricks.com
+      http_path: /sql/1.0/warehouses/abc123
+      token: dapi_secret
+`,
+    )
+
+    try {
+      const connections = await parseDbtProfiles(profilesPath)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].type).toBe("databricks")
+      expect(connections[0].config.type).toBe("databricks")
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+
+  test("trino adapter maps to postgres (wire-compatible)", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-test-"))
+    const profilesPath = path.join(tmpDir, "profiles.yml")
+
+    fs.writeFileSync(
+      profilesPath,
+      `
+trino_project:
+  outputs:
+    prod:
+      type: trino
+      host: trino.example.com
+      port: 8080
+      user: analyst
+      dbname: hive
+`,
+    )
+
+    try {
+      const connections = await parseDbtProfiles(profilesPath)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].type).toBe("postgres")
+      expect(connections[0].config.type).toBe("postgres")
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+
+  test("top-level config key is skipped (not treated as a profile)", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-test-"))
+    const profilesPath = path.join(tmpDir, "profiles.yml")
+
+    fs.writeFileSync(
+      profilesPath,
+      `
+config:
+  send_anonymous_usage_stats: false
+  use_colors: true
+
+real_project:
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      dbname: mydb
+`,
+    )
+
+    try {
+      const connections = await parseDbtProfiles(profilesPath)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].name).toBe("real_project_dev")
+      // Ensure no connection was created for the config key
+      expect(connections.find((c) => c.name.startsWith("config"))).toBeUndefined()
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+
+  test("multiple profiles with multiple outputs parsed correctly", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-test-"))
+    const profilesPath = path.join(tmpDir, "profiles.yml")
+
+    fs.writeFileSync(
+      profilesPath,
+      `
+analytics:
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      dbname: analytics_dev
+    prod:
+      type: postgres
+      host: prod.example.com
+      dbname: analytics_prod
+
+warehouse:
+  outputs:
+    staging:
+      type: snowflake
+      account: abc123
+    production:
+      type: snowflake
+      account: xyz789
+`,
+    )
+
+    try {
+      const connections = await parseDbtProfiles(profilesPath)
+      expect(connections).toHaveLength(4)
+      const names = connections.map((c) => c.name).sort()
+      expect(names).toEqual([
+        "analytics_dev",
+        "analytics_prod",
+        "warehouse_production",
+        "warehouse_staging",
+      ])
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dbtConnectionsToConfigs
+// ---------------------------------------------------------------------------
+
+describe("dbtConnectionsToConfigs", () => {
+  test("converts connection array to keyed record", () => {
+    const connections = [
+      { name: "pg_dev", type: "postgres", config: { type: "postgres", host: "localhost" } },
+      { name: "sf_prod", type: "snowflake", config: { type: "snowflake", account: "abc" } },
+    ]
+    const result = dbtConnectionsToConfigs(connections)
+    expect(Object.keys(result)).toHaveLength(2)
+    expect(result["pg_dev"].type).toBe("postgres")
+    expect(result["sf_prod"].type).toBe("snowflake")
+  })
+
+  test("returns empty object for empty array", () => {
+    const result = dbtConnectionsToConfigs([])
+    expect(result).toEqual({})
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Docker discovery (dockerode not available)
 // ---------------------------------------------------------------------------
 
@@ -271,6 +479,75 @@ describe("Docker discovery", () => {
   test("returns empty array when dockerode not installed", async () => {
     const containers = await discoverContainers()
     expect(containers).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// containerToConfig — Docker container to ConnectionConfig conversion
+// ---------------------------------------------------------------------------
+
+describe("containerToConfig", () => {
+  test("creates ConnectionConfig with all fields from a fully-populated container", () => {
+    const container: DockerContainer = {
+      container_id: "abc123def456",
+      name: "my-postgres",
+      image: "postgres:16",
+      db_type: "postgres",
+      host: "127.0.0.1",
+      port: 5432,
+      user: "admin",
+      password: "secret",
+      database: "mydb",
+      status: "running",
+    }
+    const config = containerToConfig(container)
+    expect(config.type).toBe("postgres")
+    expect(config.host).toBe("127.0.0.1")
+    expect(config.port).toBe(5432)
+    expect(config.user).toBe("admin")
+    expect(config.password).toBe("secret")
+    expect(config.database).toBe("mydb")
+  })
+
+  test("omits user, password, database when undefined on container", () => {
+    const container: DockerContainer = {
+      container_id: "abc123def456",
+      name: "bare-mysql",
+      image: "mysql:8",
+      db_type: "mysql",
+      host: "127.0.0.1",
+      port: 3306,
+      user: undefined,
+      password: undefined,
+      database: undefined,
+      status: "running",
+    }
+    const config = containerToConfig(container)
+    expect(config.type).toBe("mysql")
+    expect(config.host).toBe("127.0.0.1")
+    expect(config.port).toBe(3306)
+    // These keys should not exist at all — not just be undefined
+    expect("user" in config).toBe(false)
+    expect("password" in config).toBe(false)
+    expect("database" in config).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// detectAuthMethod — MongoDB support (#482)
+// ---------------------------------------------------------------------------
+
+describe("detectAuthMethod: MongoDB", () => {
+  test("returns connection_string for mongodb with no password", () => {
+    // This is the only reachable MongoDB-specific branch — the generic
+    // password check fires first if password is set.
+    const result = detectAuthMethod({ type: "mongodb" })
+    expect(result).toBe("connection_string")
+  })
+
+  test("returns connection_string for mongo alias with no password", () => {
+    const result = detectAuthMethod({ type: "mongo" })
+    expect(result).toBe("connection_string")
   })
 })
 
