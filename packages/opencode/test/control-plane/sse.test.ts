@@ -53,4 +53,83 @@ describe("control-plane/sse", () => {
       },
     ])
   })
+
+  test("handles events split across chunk boundaries", async () => {
+    const events: unknown[] = []
+    const stop = new AbortController()
+
+    await parseSSE(
+      stream(['data: {"type":"spl', 'it"}\n\n']),
+      stop.signal,
+      (event) => events.push(event),
+    )
+
+    expect(events).toEqual([{ type: "split" }])
+  })
+
+  test("handles double newline split across chunks", async () => {
+    const events: unknown[] = []
+    const stop = new AbortController()
+
+    await parseSSE(
+      stream(['data: {"type":"boundary"}\n', '\ndata: {"type":"next"}\n\n']),
+      stop.signal,
+      (event) => events.push(event),
+    )
+
+    expect(events).toEqual([{ type: "boundary" }, { type: "next" }])
+  })
+
+  test("ignores empty events (double newline with no data)", async () => {
+    const events: unknown[] = []
+    const stop = new AbortController()
+
+    await parseSSE(
+      stream(['\n\ndata: {"type":"real"}\n\n']),
+      stop.signal,
+      (event) => events.push(event),
+    )
+
+    expect(events).toEqual([{ type: "real" }])
+  })
+
+  test("abort signal stops processing mid-stream", async () => {
+    const events: unknown[] = []
+    const stop = new AbortController()
+
+    // Stream that delivers chunks on demand via pull(); abort fires
+    // between the first and second read.
+    let pullCount = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const encoder = new TextEncoder()
+        pullCount++
+        if (pullCount === 1) {
+          controller.enqueue(encoder.encode('data: {"type":"first"}\n\n'))
+          // Abort before next pull delivers second event
+          stop.abort()
+        } else {
+          controller.enqueue(encoder.encode('data: {"type":"second"}\n\n'))
+          controller.close()
+        }
+      },
+    })
+
+    await parseSSE(body, stop.signal, (event) => events.push(event))
+
+    expect(events).toEqual([{ type: "first" }])
+  })
+
+  test("handles bare \\r line endings", async () => {
+    const events: unknown[] = []
+    const stop = new AbortController()
+
+    await parseSSE(
+      stream(['data: {"type":"cr"}\r\r']),
+      stop.signal,
+      (event) => events.push(event),
+    )
+
+    expect(events).toEqual([{ type: "cr" }])
+  })
 })
