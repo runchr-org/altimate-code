@@ -7,7 +7,6 @@ import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let mssql: any
   try {
-    // @ts-expect-error — mssql has no type declarations; installed as optional peerDependency
     mssql = await import("mssql")
     mssql = mssql.default || mssql
   } catch {
