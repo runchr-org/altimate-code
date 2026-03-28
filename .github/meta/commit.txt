@@ -1,21 +1,6 @@
-test: consolidate 18 test PRs — 434 new tests, deduplicated, with bug fixes
+fix: remove flaky `setTimeout` in todo bus event test
 
-Consolidates PRs #515, #526, #527, #528, #530, #531, #532, #533, #534,
-#535, #536, #537, #538, #539, #540, #541, #542, #543 into a single PR.
-
-Changes:
-- 30 files changed, ~3000 lines of new test coverage
-- Deduplicated redundant tests:
-  - `copilot-compat.test.ts`: removed duplicate `mapOpenAICompatibleFinishReason`
-    tests (already covered in `copilot/finish-reason.test.ts`)
-  - `lazy.test.ts`: removed duplicate error-retry and `reset()` tests
-  - `transform.test.ts`: kept most comprehensive version (#535) over
-    subset PRs (#539, #541)
-- Bug fixes from PR #528:
-  - `extractEquivalenceErrors`: `null` entries in `validation_errors`
-    crashed with TypeError (`null.message` throws before `??` evaluates).
-    Fixed with optional chaining: `e?.message`
-  - `extractSemanticsErrors`: same fix applied
-  - Updated test from `expect(...).toThrow(TypeError)` to verify the fix
+`Bus.publish` is synchronous — the event is delivered immediately,
+no 50ms delay needed. Removes resource contention risk in parallel CI.
 
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>

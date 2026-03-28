@@ -1,18 +1,18 @@
 import { describe, test, expect } from "bun:test"
-import path from "path"
 import { Session } from "../../src/session"
 import { Todo } from "../../src/session/todo"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
 import { Instance } from "../../src/project/instance"
+import { tmpdir } from "../fixture/fixture"
 
-const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
 
 describe("Todo: CRUD lifecycle", () => {
   test("update then get returns todos in order", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: projectRoot,
+      directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
         const todos = [
@@ -37,8 +37,9 @@ describe("Todo: CRUD lifecycle", () => {
   })
 
   test("update with empty array clears all todos", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: projectRoot,
+      directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
 
@@ -57,8 +58,9 @@ describe("Todo: CRUD lifecycle", () => {
   })
 
   test("update replaces previous todos entirely", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: projectRoot,
+      directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
 
@@ -87,8 +89,9 @@ describe("Todo: CRUD lifecycle", () => {
   })
 
   test("get returns empty array for session with no todos", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: projectRoot,
+      directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
 
@@ -101,8 +104,9 @@ describe("Todo: CRUD lifecycle", () => {
   })
 
   test("publishes Todo.Event.Updated on update", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: projectRoot,
+      directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
         let eventReceived = false
@@ -131,8 +135,9 @@ describe("Todo: CRUD lifecycle", () => {
   })
 
   test("todos are isolated between sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: projectRoot,
+      directory: tmp.path,
       fn: async () => {
         const session1 = await Session.create({})
         const session2 = await Session.create({})

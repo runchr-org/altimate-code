@@ -73,7 +73,10 @@ export function formatCheck(data: Record<string, any>): string {
   if (data.validation?.valid) {
     lines.push("Valid SQL.")
   } else {
-    lines.push(`Invalid: ${data.validation?.errors?.map((e: any) => e.message).join("; ") ?? "unknown"}`)
+    const validationMessages = (data.validation?.errors ?? [])
+      .map((e: any) => (typeof e === "string" ? e : e?.message))
+      .filter(Boolean)
+    lines.push(`Invalid: ${validationMessages.join("; ") || "unknown"}`)
   }
 
   lines.push("\n=== Lint ===")

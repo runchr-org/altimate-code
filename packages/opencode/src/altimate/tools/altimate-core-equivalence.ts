@@ -52,7 +52,7 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
           ...(error && { error }),
           ...(findings.length > 0 && { findings }),
         },
-        output: formatEquivalence(data),
+        output: formatEquivalence(isRealFailure ? { ...data, error } : data),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
