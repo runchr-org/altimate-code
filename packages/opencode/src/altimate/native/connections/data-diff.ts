@@ -105,7 +105,8 @@ async function executeQuery(sql: string, warehouseName: string | undefined): Pro
     connector = await Registry.get(warehouses[0].name)
   }
 
-  const result = await connector.execute(sql)
+  // Bypass the driver's default LIMIT — data-diff needs complete result sets.
+  const result = await connector.execute(sql, undefined, undefined, { noLimit: true })
 
   // Normalise to string[][] — drivers return mixed types
   return result.rows.map((row: unknown[]) =>

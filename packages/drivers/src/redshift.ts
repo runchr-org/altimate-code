@@ -3,7 +3,7 @@
  * Uses svv_ system views for introspection.
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let pg: any
@@ -46,10 +46,10 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       pool = new Pool(poolConfig)
     },
 
-    async execute(sql: string, limit?: number, _binds?: any[]): Promise<ConnectorResult> {
+    async execute(sql: string, limit?: number, _binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
       const client = await pool.connect()
       try {
-        const effectiveLimit = limit ?? 1000
+        const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
         let query = sql
         const isSelectLike = /^\s*(SELECT|WITH|VALUES)\b/i.test(sql)
         if (
@@ -62,7 +62,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
 
         const result = await client.query(query)
         const columns = result.fields?.map((f: any) => f.name) ?? []
-        const truncated = result.rows.length > effectiveLimit
+        const truncated = effectiveLimit > 0 && result.rows.length > effectiveLimit
         const rows = truncated
           ? result.rows.slice(0, effectiveLimit)
           : result.rows
