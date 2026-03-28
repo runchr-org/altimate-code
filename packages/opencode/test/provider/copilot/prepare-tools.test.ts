@@ -43,7 +43,7 @@ describe("prepareTools", () => {
   test("provider-defined tool emits unsupported-tool warning", () => {
     const providerTool = {
       type: "provider-defined" as const,
-      id: "some-provider-tool",
+      id: "some.provider-tool" as `${string}.${string}`,
       name: "provider_tool",
       args: {},
     }

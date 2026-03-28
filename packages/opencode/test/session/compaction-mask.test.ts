@@ -24,7 +24,7 @@ function makeCompletedPart(overrides: {
       metadata: {},
       time: { start: 1000, end: 2000 },
     },
-  } as MessageV2.ToolPart
+  } as unknown as MessageV2.ToolPart
 }
 
 function makePendingPart(overrides?: { tool?: string }): MessageV2.ToolPart {
@@ -40,7 +40,7 @@ function makePendingPart(overrides?: { tool?: string }): MessageV2.ToolPart {
       input: { command: "ls -la" },
       raw: '{"command":"ls -la"}',
     },
-  } as MessageV2.ToolPart
+  } as unknown as MessageV2.ToolPart
 }
 
 // ─── createObservationMask: completed tool parts ────────────────────────────
