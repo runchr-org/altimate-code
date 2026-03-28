@@ -256,6 +256,18 @@ Output includes aggregate diff + per-partition breakdown showing which group has
 
 ---
 
+## CRITICAL: `extra_columns` Behavior
+
+The Rust engine **only compares columns listed in `extra_columns`**. If the list is empty, it compares key existence only — rows that match on key but differ in values will be silently reported as "identical". This is the most common source of false positives.
+
+**Auto-discovery (default for table names):** When `extra_columns` is omitted and the source is a plain table name, `data_diff` auto-discovers all non-key columns from `information_schema` and excludes audit/timestamp columns (like `updated_at`, `created_at`, `inserted_at`, `modified_at`, `publisher_last_updated_epoch_ms`, ETL metadata columns like `_fivetran_synced`, etc.). The output will list which columns were auto-excluded.
+
+**SQL queries:** When source is a SQL query (not a table name), auto-discovery cannot work. You **must** provide `extra_columns` explicitly. If you don't, only key-level matching occurs.
+
+**When to override auto-exclusion:** If the user specifically wants to compare audit columns (e.g., verifying that `created_at` was preserved during migration), pass those columns explicitly in `extra_columns`.
+
+---
+
 ## Common Mistakes
 
 **Writing manual diff SQL instead of calling data_diff**
@@ -272,3 +284,6 @@ Output includes aggregate diff + per-partition breakdown showing which group has
 
 **Running full diff on a billion-row table without asking**
 → Always ask the user before expensive operations. Offer filtering and partition options.
+
+**Omitting extra_columns when source is a SQL query**
+→ Auto-discovery only works for table names. For SQL queries, always list the columns to compare explicitly.

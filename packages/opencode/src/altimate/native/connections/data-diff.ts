@@ -114,6 +114,138 @@ async function executeQuery(sql: string, warehouseName: string | undefined): Pro
 }
 
 // ---------------------------------------------------------------------------
+// Column auto-discovery and audit column exclusion
+// ---------------------------------------------------------------------------
+
+/**
+ * Patterns that match audit/timestamp columns which should be excluded from
+ * value comparison by default. These columns typically differ between source
+ * and target due to ETL timing, sync metadata, or pipeline bookkeeping —
+ * not because of actual data discrepancies.
+ */
+const AUDIT_COLUMN_PATTERNS = [
+  // Exact common names
+  /^(created|updated|modified|inserted|deleted|synced|published|ingested|loaded|extracted|refreshed)_(at|on|date|time|timestamp|ts|dt|epoch)$/i,
+  // Suffix patterns: *_at, *_on with temporal prefix
+  /_(created|updated|modified|inserted|deleted|synced|published|ingested|loaded|extracted|refreshed)$/i,
+  // ETL metadata columns
+  /^(etl|elt|dbt|pipeline|batch|sync|publish|ingest)_(created|updated|modified|loaded|run|timestamp|ts|time|at|epoch)/i,
+  /^(_sdc_|_airbyte_|_fivetran_|_stitch_|__hevo_)/i,
+  // Generic timestamp metadata
+  /^(last_updated|last_modified|date_updated|date_modified|date_created|row_updated|row_created)$/i,
+  /^(publisher_last_updated|publisher_updated)/i,
+  // Epoch variants
+  /(updated|modified|created|inserted|published|loaded|synced)_epoch/i,
+  /epoch_ms$/i,
+]
+
+/**
+ * Check whether a column name matches known audit/timestamp patterns.
+ */
+function isAuditColumn(columnName: string): boolean {
+  return AUDIT_COLUMN_PATTERNS.some((pattern) => pattern.test(columnName))
+}
+
+/**
+ * Build a query to discover column names for a table, appropriate for the dialect.
+ */
+function buildColumnDiscoverySQL(tableName: string, dialect: string): string {
+  // Parse schema.table or db.schema.table
+  const parts = tableName.split(".")
+  let schemaFilter = ""
+  let tableFilter = ""
+
+  if (parts.length === 3) {
+    schemaFilter = `table_schema = '${parts[1]}'`
+    tableFilter = `table_name = '${parts[2]}'`
+  } else if (parts.length === 2) {
+    schemaFilter = `table_schema = '${parts[0]}'`
+    tableFilter = `table_name = '${parts[1]}'`
+  } else {
+    tableFilter = `table_name = '${parts[0]}'`
+  }
+
+  switch (dialect) {
+    case "clickhouse":
+      return `DESCRIBE TABLE ${tableName}`
+    case "snowflake":
+      return `SHOW COLUMNS IN TABLE ${tableName}`
+    default: {
+      // Postgres, MySQL, Redshift, DuckDB, etc. — use information_schema
+      const conditions = [tableFilter]
+      if (schemaFilter) conditions.push(schemaFilter)
+      return `SELECT column_name FROM information_schema.columns WHERE ${conditions.join(" AND ")} ORDER BY ordinal_position`
+    }
+  }
+}
+
+/**
+ * Parse column names from the discovery query result, handling dialect differences.
+ */
+function parseColumnNames(rows: (string | null)[][], dialect: string): string[] {
+  switch (dialect) {
+    case "clickhouse":
+      // DESCRIBE returns: name, type, default_type, default_expression, ...
+      return rows.map((r) => r[0] ?? "").filter(Boolean)
+    case "snowflake":
+      // SHOW COLUMNS returns: table_name, schema_name, column_name, data_type, ...
+      // column_name is at index 2
+      return rows.map((r) => r[2] ?? "").filter(Boolean)
+    default:
+      // information_schema returns: column_name
+      return rows.map((r) => r[0] ?? "").filter(Boolean)
+  }
+}
+
+/**
+ * Auto-discover non-key, non-audit columns for a table.
+ *
+ * When the caller omits `extra_columns`, we query the source table's schema to
+ * find all columns, then exclude:
+ *   1. Key columns (already used for matching)
+ *   2. Audit/timestamp columns (updated_at, created_at, etc.) that typically
+ *      differ between source and target due to ETL timing
+ *
+ * Returns the list of columns to compare, or undefined if discovery fails
+ * (in which case the engine falls back to key-only comparison).
+ */
+async function discoverExtraColumns(
+  tableName: string,
+  keyColumns: string[],
+  dialect: string,
+  warehouseName: string | undefined,
+): Promise<{ columns: string[]; excludedAudit: string[] } | undefined> {
+  // Only works for plain table names, not SQL queries
+  if (SQL_KEYWORDS.test(tableName)) return undefined
+
+  try {
+    const sql = buildColumnDiscoverySQL(tableName, dialect)
+    const rows = await executeQuery(sql, warehouseName)
+    const allColumns = parseColumnNames(rows, dialect)
+
+    if (allColumns.length === 0) return undefined
+
+    const keySet = new Set(keyColumns.map((k) => k.toLowerCase()))
+    const extraColumns: string[] = []
+    const excludedAudit: string[] = []
+
+    for (const col of allColumns) {
+      if (keySet.has(col.toLowerCase())) continue
+      if (isAuditColumn(col)) {
+        excludedAudit.push(col)
+      } else {
+        extraColumns.push(col)
+      }
+    }
+
+    return { columns: extraColumns, excludedAudit }
+  } catch {
+    // Schema discovery failed — fall back to engine default (key-only)
+    return undefined
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
@@ -426,6 +558,26 @@ export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResul
   const dialect1 = resolveDialect(params.source_warehouse)
   const dialect2 = resolveDialect(params.target_warehouse ?? params.source_warehouse)
 
+  // Auto-discover extra_columns when not explicitly provided.
+  // The Rust engine only compares columns listed in extra_columns — if the list is
+  // empty, it compares key existence only and reports all matched rows as "identical"
+  // even when non-key values differ. This auto-discovery prevents that silent bug.
+  let extraColumns = params.extra_columns
+  let excludedAuditColumns: string[] = []
+
+  if (!extraColumns || extraColumns.length === 0) {
+    const discovered = await discoverExtraColumns(
+      params.source,
+      params.key_columns,
+      dialect1,
+      params.source_warehouse,
+    )
+    if (discovered) {
+      extraColumns = discovered.columns
+      excludedAuditColumns = discovered.excludedAudit
+    }
+  }
+
   // Build session spec
   const spec = {
     table1: table1Ref,
@@ -435,7 +587,7 @@ export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResul
     config: {
       algorithm: params.algorithm ?? "auto",
       key_columns: params.key_columns,
-      extra_columns: params.extra_columns ?? [],
+      extra_columns: extraColumns ?? [],
       ...(params.where_clause ? { where_clause: params.where_clause } : {}),
       ...(params.numeric_tolerance != null ? { numeric_tolerance: params.numeric_tolerance } : {}),
       ...(params.timestamp_tolerance_ms != null
@@ -477,6 +629,7 @@ export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResul
         success: true,
         steps: stepCount,
         outcome: action.outcome,
+        ...(excludedAuditColumns.length > 0 ? { excluded_audit_columns: excludedAuditColumns } : {}),
       }
     }
 
