@@ -281,11 +281,11 @@ describe("CredentialStore", () => {
       user: "svc_user",
       password: "test-fake-pw",
       private_key: "-----BEGIN PRIVATE KEY-----",
-      private_key_passphrase: "passphrase",
-      token: "oauth-token",
-      oauth_client_secret: "client-secret",
+      private_key_passphrase: "test-fake-passphrase",
+      token: "test-fake-oauth-token",
+      oauth_client_secret: "test-fake-client-secret",
       ssh_password: "test-fake-ssh-pw",
-      connection_string: "mongodb://...",
+      connection_string: "test-fake-connstring",
     } as any
     const { sanitized, warnings } = await CredentialStore.saveConnection("complex", config)
 
@@ -319,7 +319,7 @@ describe("dbt profiles parser", () => {
   // Keeping it simple for now — the parser is mostly about YAML parsing + mapping.
   test("handles env_var resolution in profiles", async () => {
     // Set env var for test
-    process.env.TEST_DBT_PASSWORD = "my_secret"
+    process.env.TEST_DBT_PASSWORD = "test-fake-dbt-pw"
 
     const fs = await import("fs")
     const os = await import("os")
@@ -350,7 +350,7 @@ myproject:
       expect(connections).toHaveLength(1)
       expect(connections[0].name).toBe("myproject_dev")
       expect(connections[0].type).toBe("postgres")
-      expect(connections[0].config.password).toBe("my_secret")
+      expect(connections[0].config.password).toBe("test-fake-dbt-pw")
       expect(connections[0].config.database).toBe("mydb")
     } finally {
       fs.rmSync(tmpDir, { recursive: true })
@@ -376,7 +376,7 @@ snowflake_keypair:
       account: abc123
       user: svc_user
       private_key: "-----BEGIN PRIVATE KEY-----\\nMIIEvQ..."
-      private_key_passphrase: "my-passphrase"
+      private_key_passphrase: "test-fake-pp"
       database: ANALYTICS
       warehouse: COMPUTE_WH
       schema: PUBLIC
@@ -389,7 +389,7 @@ snowflake_keypair:
       expect(connections).toHaveLength(1)
       expect(connections[0].type).toBe("snowflake")
       expect(connections[0].config.private_key).toBe("-----BEGIN PRIVATE KEY-----\nMIIEvQ...")
-      expect(connections[0].config.private_key_passphrase).toBe("my-passphrase")
+      expect(connections[0].config.private_key_passphrase).toBe("test-fake-pp")
       expect(connections[0].config.password).toBeUndefined()
     } finally {
       fs.rmSync(tmpDir, { recursive: true })
@@ -563,7 +563,7 @@ spark_project:
       type: spark
       server_hostname: my-spark-cluster.databricks.com
       http_path: /sql/1.0/warehouses/abc123
-      token: dapi_secret
+      token: test_fake_dapi
 `,
     )
 
