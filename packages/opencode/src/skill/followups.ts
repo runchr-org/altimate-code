@@ -153,8 +153,8 @@ export namespace SkillFollowups {
   // A special warehouse nudge for users who haven't connected yet
   const WAREHOUSE_NUDGE = "**Tip:** Connect a warehouse to validate against real data. Run `/discover` to auto-detect your connections."
 
-  export function get(skillName: string): Suggestion[] {
-    return FOLLOWUPS[skillName] ?? []
+  export function get(skillName: string): readonly Suggestion[] {
+    return Object.freeze(FOLLOWUPS[skillName] ?? [])
   }
 
   export function format(skillName: string): string {

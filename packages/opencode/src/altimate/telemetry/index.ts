@@ -349,6 +349,8 @@ export namespace Telemetry {
         skill_name: string
         skill_source: "builtin" | "global" | "project"
         duration_ms: number
+        has_followups: boolean
+        followup_count: number
       }
     // altimate_change start — first_launch event for new user counting (privacy-safe: only version + machine_id)
     | {

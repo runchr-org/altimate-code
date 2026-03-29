@@ -143,6 +143,10 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           }).then((f) => f.map((file) => `<file>${file}</file>`).join("\n"))
       // altimate_change end
 
+      // altimate_change start — append follow-up suggestions after skill content
+      const followups = SkillFollowups.format(skill.name)
+      // altimate_change end
+
       // altimate_change start — telemetry instrumentation for skill loading
       try {
         Telemetry.track({
@@ -153,19 +157,19 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           skill_name: skill.name,
           skill_source: classifySkillSource(skill.location),
           duration_ms: Date.now() - startTime,
+          has_followups: followups.length > 0,
+          followup_count: SkillFollowups.get(skill.name).length,
         })
       } catch {
         // Telemetry must never break skill loading
       }
       // altimate_change end
 
-      // altimate_change start — append follow-up suggestions after skill content
-      const followups = SkillFollowups.format(skill.name)
-      // altimate_change end
-
+      // altimate_change start — custom return with follow-ups, file listing, and base directory
       return {
         title: `Loaded skill: ${skill.name}`,
         output: [
+          ...(followups ? [followups, ""] : []),
           `<skill_content name="${skill.name}">`,
           `# Skill: ${skill.name}`,
           "",
@@ -179,13 +183,13 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           files,
           "</skill_files>",
           "</skill_content>",
-          followups,
         ].join("\n"),
         metadata: {
           name: skill.name,
           dir,
         },
       }
+      // altimate_change end
     },
   }
 })
