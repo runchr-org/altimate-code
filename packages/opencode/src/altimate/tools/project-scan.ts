@@ -632,6 +632,19 @@ export const ProjectScanTool = Tool.define("project_scan", {
       dbt_model_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.model_count) : "0",
       dbt_source_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.source_count) : "0",
       dbt_test_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.test_count) : "0",
+      // altimate_change start — dbt project fingerprint expansion
+      dbt_snapshot_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.snapshot_count ?? 0) : "0",
+      dbt_seed_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.seed_count ?? 0) : "0",
+      dbt_materialization_dist: dbtManifest
+        ? JSON.stringify(
+            (dbtManifest.models ?? []).reduce((acc: Record<string, number>, m: any) => {
+              const mat = m.materialized ?? "unknown"
+              acc[mat] = (acc[mat] ?? 0) + 1
+              return acc
+            }, {} as Record<string, number>),
+          )
+        : undefined,
+      // altimate_change end
       connection_sources: connectionSources,
       mcp_server_count: mcpServerCount,
       skill_count: skillCount,

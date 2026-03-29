@@ -212,6 +212,13 @@ export namespace Telemetry {
         dbt_model_count_bucket: string
         dbt_source_count_bucket: string
         dbt_test_count_bucket: string
+        // altimate_change start — dbt project fingerprint expansion
+        dbt_snapshot_count_bucket?: string
+        dbt_seed_count_bucket?: string
+        /** JSON-encoded Record<string, number> — count per materialization type */
+        dbt_materialization_dist?: string
+        dbt_macro_count_bucket?: string
+        // altimate_change end
         connection_sources: string[]
         mcp_server_count: number
         skill_count: number
