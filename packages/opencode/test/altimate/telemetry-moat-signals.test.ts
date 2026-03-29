@@ -873,3 +873,126 @@ describe("Full E2E session simulation", () => {
     expect(allSerialized).not.toContain("credit_card")
   })
 })
+
+// ===========================================================================
+// altimate-core failure isolation — computeSqlFingerprint resilience
+// ===========================================================================
+describe("altimate-core failure isolation", () => {
+  const core = require("@altimateai/altimate-core")
+
+  test("computeSqlFingerprint returns null when getStatementTypes throws", () => {
+    const orig = core.getStatementTypes
+    core.getStatementTypes = () => {
+      throw new Error("NAPI segfault")
+    }
+    try {
+      const result = computeSqlFingerprint("SELECT 1")
+      expect(result).toBeNull()
+    } finally {
+      core.getStatementTypes = orig
+    }
+  })
+
+  test("computeSqlFingerprint returns null when extractMetadata throws", () => {
+    const orig = core.extractMetadata
+    core.extractMetadata = () => {
+      throw new Error("out of memory")
+    }
+    try {
+      const result = computeSqlFingerprint("SELECT 1")
+      expect(result).toBeNull()
+    } finally {
+      core.extractMetadata = orig
+    }
+  })
+
+  test("computeSqlFingerprint handles undefined return from getStatementTypes", () => {
+    const orig = core.getStatementTypes
+    core.getStatementTypes = () => undefined
+    try {
+      const result = computeSqlFingerprint("SELECT 1")
+      expect(result).not.toBeNull()
+      if (result) {
+        expect(result.statement_types).toEqual([])
+        expect(result.categories).toEqual([])
+      }
+    } finally {
+      core.getStatementTypes = orig
+    }
+  })
+
+  test("computeSqlFingerprint handles undefined return from extractMetadata", () => {
+    const orig = core.extractMetadata
+    core.extractMetadata = () => undefined
+    try {
+      const result = computeSqlFingerprint("SELECT 1")
+      expect(result).not.toBeNull()
+      if (result) {
+        expect(result.table_count).toBe(0)
+        expect(result.function_count).toBe(0)
+        expect(result.has_subqueries).toBe(false)
+        expect(result.has_aggregation).toBe(false)
+      }
+    } finally {
+      core.extractMetadata = orig
+    }
+  })
+
+  test("computeSqlFingerprint handles garbage data from core", () => {
+    const origStmt = core.getStatementTypes
+    const origMeta = core.extractMetadata
+    core.getStatementTypes = () => ({ types: "not-array", categories: null, statements: 42 })
+    core.extractMetadata = () => ({ tables: 42, columns: "bad", functions: undefined })
+    try {
+      const result = computeSqlFingerprint("SELECT 1")
+      // Should not throw — defaults handle bad data
+      expect(result).not.toBeNull()
+    } finally {
+      core.getStatementTypes = origStmt
+      core.extractMetadata = origMeta
+    }
+  })
+
+  test("sql-execute fingerprint try/catch isolates failures from query results", () => {
+    // Verify the code structure: fingerprinting runs AFTER query result is computed
+    // and is wrapped in its own try/catch
+    const fs = require("fs")
+    const src = fs.readFileSync(
+      require("path").join(__dirname, "../../src/altimate/tools/sql-execute.ts"),
+      "utf8",
+    )
+    // Query execution happens first
+    const execIdx = src.indexOf('Dispatcher.call("sql.execute"')
+    const formatIdx = src.indexOf("formatResult(result)")
+    const fpCallIdx = src.indexOf("computeSqlFingerprint(args.query)")
+    const guardComment = src.indexOf("Fingerprinting must never break query execution")
+
+    expect(execIdx).toBeGreaterThan(0)
+    expect(formatIdx).toBeGreaterThan(execIdx) // format after execute
+    expect(fpCallIdx).toBeGreaterThan(formatIdx) // fingerprint after format
+    expect(guardComment).toBeGreaterThan(fpCallIdx) // catch guard exists after fingerprint
+  })
+
+  test("crash-resistant SQL inputs all handled safely", () => {
+    const inputs = [
+      "",
+      "   ",
+      ";;;",
+      "-- comment only",
+      "SELECT FROM WHERE", // incomplete
+      "DROP TABLE users; -- injection",
+      "\x00\x01\x02", // control chars
+      "SELECT " + "x,".repeat(1000) + "x FROM t", // very wide
+    ]
+    for (const sql of inputs) {
+      expect(() => computeSqlFingerprint(sql)).not.toThrow()
+    }
+  })
+
+  test("altimate-core produces consistent results across calls", () => {
+    const sql = "SELECT a.id, COUNT(*) FROM orders a JOIN users b ON a.uid = b.id GROUP BY a.id"
+    const fp1 = computeSqlFingerprint(sql)
+    const fp2 = computeSqlFingerprint(sql)
+    expect(fp1).toEqual(fp2) // deterministic
+  })
+})
