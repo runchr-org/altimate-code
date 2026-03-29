@@ -1,14 +1,15 @@
-fix: defensive null guards in tool formatters and DuckDB concurrent access retry (#570)
+feat: add task intent classification telemetry event
 
-- Add null/undefined guards across 8 tool formatters to prevent literal
-  `undefined` in user-facing output (sql-analyze, schema-inspect,
-  sql-translate, dbt-manifest, finops-analyze-credits, warehouse-list,
-  altimate-core-check, altimate-core-rewrite)
-- Add `error: msg` to catch block metadata in schema-inspect,
-  dbt-manifest, warehouse-list so telemetry can classify exceptions
-- DuckDB driver: auto-retry in `READ_ONLY` mode on `database is locked`
-  errors, with clear actionable error message
-- Add simulation suite (839 mock + 346 real E2E scenarios) covering
-  10 personas x 11 dialects x 14 use-case categories
+Add `task_classified` event emitted at session start with keyword/regex
+classification of the first user message. Categories: debug_dbt, write_sql,
+optimize_query, build_model, analyze_lineage, explore_schema, migrate_sql,
+manage_warehouse, finops, general.
+
+- `classifyTaskIntent()` — pure regex matcher, zero LLM cost, <1ms
+- Includes warehouse type from fingerprint cache
+- Strong/weak confidence levels (1.0 vs 0.5)
+- 15 unit tests covering all intent categories + edge cases
+
+Closes AI-6029
 
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
