@@ -133,6 +133,18 @@ const DRIVER_MAP: Record<string, string> = {
 async function createConnector(name: string, config: ConnectionConfig): Promise<Connector> {
   const driverPath = DRIVER_MAP[config.type.toLowerCase()]
   if (!driverPath) {
+    // altimate_change start — friendlier error for known-but-unsupported databases
+    const KNOWN_UNSUPPORTED: Record<string, string> = {
+      clickhouse: "ClickHouse is not yet supported. Use the bash tool with `clickhouse-client` or `curl` to query ClickHouse directly.",
+      cassandra: "Cassandra is not yet supported. Use the bash tool with `cqlsh` to query Cassandra directly.",
+      cockroachdb: "CockroachDB is not yet supported. It is PostgreSQL-compatible — try type: postgres instead.",
+      timescaledb: "TimescaleDB is a PostgreSQL extension — use type: postgres instead.",
+    }
+    const hint = KNOWN_UNSUPPORTED[config.type.toLowerCase()]
+    if (hint) {
+      throw new Error(hint)
+    }
+    // altimate_change end
     throw new Error(`Unsupported database type: ${config.type}. Supported: ${Object.keys(DRIVER_MAP).join(", ")}`)
   }
 
@@ -142,6 +154,22 @@ async function createConnector(name: string, config: ConnectionConfig): Promise<
 
   // Resolve credentials from keychain
   resolvedConfig = await resolveConfig(name, resolvedConfig)
+
+  // altimate_change start — validate password is a string for drivers that require it
+  // Prevents cryptic SASL/SCRAM errors from database drivers
+  const PASSWORD_DRIVERS = new Set(["postgres", "postgresql", "redshift", "mysql", "mariadb", "sqlserver", "mssql", "oracle", "snowflake"])
+  if (
+    PASSWORD_DRIVERS.has(resolvedConfig.type.toLowerCase()) &&
+    !resolvedConfig.connection_string &&
+    resolvedConfig.password != null &&
+    typeof resolvedConfig.password !== "string"
+  ) {
+    throw new Error(
+      `Database password must be a string for ${resolvedConfig.type}. ` +
+        "Check your warehouse configuration or re-add the connection with warehouse.add.",
+    )
+  }
+  // altimate_change end
 
   // Handle SSH tunnel
   const sshConfig = extractSshConfig(resolvedConfig)

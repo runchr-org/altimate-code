@@ -145,10 +145,25 @@ export namespace Tool {
             }
             if (isSoftFailure) {
               // prettier-ignore
-              const errorMsg =
-                typeof result.metadata?.error === "string"
-                  ? result.metadata.error
-                  : "unknown error"
+              // altimate_change start — propagate non-string error metadata to avoid blind "unknown error"
+              const rawError = result.metadata?.error
+              let errorMsg: string
+              if (typeof rawError === "string") {
+                errorMsg = rawError
+              } else if (rawError != null) {
+                if (typeof rawError === "object") {
+                  try {
+                    errorMsg = Telemetry.maskArgs(rawError as Record<string, unknown>)
+                  } catch {
+                    errorMsg = `soft_failure:${id}:unserializable_error`
+                  }
+                } else {
+                  errorMsg = String(rawError)
+                }
+              } else {
+                errorMsg = `soft_failure:${id}:no_error_metadata`
+              }
+              // altimate_change end
               const maskedErrorMsg = Telemetry.maskString(errorMsg).slice(0, 500)
               Telemetry.track({
                 type: "core_failure",

@@ -1506,6 +1506,16 @@ describe("telemetry.classifyError", () => {
     expect(Telemetry.classifyError("Socket hang up")).toBe("connection")
     expect(Telemetry.classifyError("ENOTFOUND db.example.com")).toBe("connection")
     expect(Telemetry.classifyError("ECONNRESET")).toBe("connection")
+    // altimate_change start — expanded connection patterns
+    expect(Telemetry.classifyError("SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string")).toBe("connection")
+    expect(Telemetry.classifyError("password must be a string")).toBe("connection")
+    expect(Telemetry.classifyError("PostgreSQL driver not installed. Run: npm install pg")).toBe("connection")
+    expect(Telemetry.classifyError("Error: Connection mydb not found. Available: (none)")).toBe("connection")
+    expect(Telemetry.classifyError("No warehouse configured. Use warehouse.add")).toBe("connection")
+    expect(Telemetry.classifyError("Unsupported database type: clickhouse")).toBe("connection")
+    expect(Telemetry.classifyError("Connection reset by peer")).toBe("connection")
+    expect(Telemetry.classifyError("Connection closed unexpectedly")).toBe("connection")
+    // altimate_change end
   })
 
   test("classifies timeout errors", () => {
@@ -1520,6 +1530,12 @@ describe("telemetry.classifyError", () => {
     expect(Telemetry.classifyError("Invalid dialect specified")).toBe("validation")
     expect(Telemetry.classifyError("Missing required field")).toBe("validation")
     expect(Telemetry.classifyError("Required parameter 'query' not provided")).toBe("validation")
+    // altimate_change start — expanded validation patterns
+    expect(Telemetry.classifyError("You must read file /path/to/file before overwriting it")).toBe("validation")
+    expect(Telemetry.classifyError("File has been modified since it was last read")).toBe("validation")
+    expect(Telemetry.classifyError("error: column foo does not exist")).toBe("validation")
+    expect(Telemetry.classifyError("You must read file before overwriting it. Use the Read tool first")).toBe("validation")
+    // altimate_change end
   })
 
   test("classifies permission errors", () => {
@@ -1527,12 +1543,33 @@ describe("telemetry.classifyError", () => {
     expect(Telemetry.classifyError("Access denied for user")).toBe("permission")
     expect(Telemetry.classifyError("Unauthorized access to resource")).toBe("permission")
     expect(Telemetry.classifyError("403 Forbidden")).toBe("permission")
+    // altimate_change start — authentication classified as permission
+    expect(Telemetry.classifyError("Authentication failed for user admin")).toBe("permission")
+    // altimate_change end
   })
 
   test("classifies internal errors", () => {
     expect(Telemetry.classifyError("Internal server error")).toBe("internal")
     expect(Telemetry.classifyError("Assertion failed: x > 0")).toBe("internal")
   })
+
+  // altimate_change start — http_error class and priority ordering tests
+  test("classifies http errors", () => {
+    expect(Telemetry.classifyError("Request failed with status code: 404 (example.com)")).toBe("http_error")
+    expect(Telemetry.classifyError("Request failed with status code: 500")).toBe("http_error")
+    expect(Telemetry.classifyError("status code: 403")).toBe("http_error")
+    expect(Telemetry.classifyError("Request failed with status")).toBe("http_error")
+  })
+
+  test("priority ordering: earlier patterns win over later ones", () => {
+    // SASL is connection, even though "authentication" is in permission
+    expect(Telemetry.classifyError("SASL authentication failed")).toBe("connection")
+    // parse_error wins over validation for "invalid syntax"
+    expect(Telemetry.classifyError("parse error: invalid syntax")).toBe("parse_error")
+    // permission ("forbidden") wins over http_error ("status code: 4")
+    expect(Telemetry.classifyError("403 Forbidden, status code: 403")).toBe("permission")
+  })
+  // altimate_change end
 
   test("returns unknown for unrecognized errors", () => {
     expect(Telemetry.classifyError("Something went wrong")).toBe("unknown")
@@ -1602,11 +1639,11 @@ describe("telemetry.computeInputSignature", () => {
     expect(sig).not.toContain("sk-abc123")
     expect(sig).not.toContain("SELECT")
     expect(sig).not.toContain("admin@example.com")
-    // Only type descriptors appear as values
+    // Only type descriptors appear as values; sensitive keys are fully redacted
     const parsed = JSON.parse(sig)
     expect(parsed.sql).toBe("string:60")
-    expect(parsed.secret).toBe("string:16")
-    expect(parsed.api_key).toBe("string:9")
+    expect(parsed.secret).toBe("****")
+    expect(parsed.api_key).toBe("****")
   })
 
   test("truncates output at 1000 chars with valid JSON", () => {

@@ -84,7 +84,17 @@ export const WebFetchTool = Tool.define("webfetch", {
       }
 
       if (!response.ok) {
-        throw new Error(`Request failed with status code: ${response.status}`)
+        // altimate_change start — include URL domain in error for easier triage
+        let domain: string
+        try {
+          domain = new URL(params.url).hostname
+        } catch {
+          domain = params.url.slice(0, 60)
+        }
+        throw new Error(
+          `Request failed with status code: ${response.status} (${domain})`,
+        )
+        // altimate_change end
       }
 
       // Check content length

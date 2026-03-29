@@ -425,7 +425,7 @@ export namespace Telemetry {
         session_id: string
         tool_name: string
         tool_category: string
-        error_class: "parse_error" | "connection" | "timeout" | "validation" | "internal" | "permission" | "unknown"
+        error_class: "parse_error" | "connection" | "timeout" | "validation" | "internal" | "permission" | "http_error" | "unknown"
         error_message: string
         input_signature: string
         masked_args?: string
@@ -447,6 +447,9 @@ export namespace Telemetry {
       }
   // altimate_change end
 
+  // altimate_change start — expanded error classification patterns for better triage
+  // Order matters: earlier patterns take priority. Use specific phrases, not
+  // single words, to avoid false positives (e.g., "connection refused" not "connection").
   const ERROR_PATTERNS: Array<{
     class: Telemetry.Event & { type: "core_failure" } extends { error_class: infer C } ? C : never
     keywords: string[]
@@ -454,13 +457,47 @@ export namespace Telemetry {
     { class: "parse_error", keywords: ["parse", "syntax", "binder", "unexpected token", "sqlglot"] },
     {
       class: "connection",
-      keywords: ["econnrefused", "connection", "socket", "enotfound", "econnreset"],
+      keywords: [
+        "econnrefused",
+        "enotfound",
+        "econnreset",
+        "connection refused",
+        "connection reset",
+        "connection closed",
+        "connect failed",
+        "connect etimedout",
+        "socket hang up",
+        "sasl",
+        "scram",
+        "password must be",
+        "driver not installed",
+        "not found. available:",
+        "no warehouse configured",
+        "unsupported database type",
+      ],
     },
     { class: "timeout", keywords: ["timeout", "etimedout", "bridge timeout", "timed out"] },
-    { class: "permission", keywords: ["permission", "denied", "unauthorized", "forbidden"] },
-    { class: "validation", keywords: ["invalid params", "invalid", "missing", "required"] },
+    { class: "permission", keywords: ["permission", "access denied", "permission denied", "unauthorized", "forbidden", "authentication"] },
+    {
+      class: "validation",
+      keywords: [
+        "invalid params",
+        "invalid",
+        "missing",
+        "required",
+        "must read file",
+        "has been modified since",
+        "does not exist",
+        "before overwriting",
+      ],
+    },
     { class: "internal", keywords: ["internal", "assertion"] },
+    {
+      class: "http_error",
+      keywords: ["status code: 4", "status code: 5", "request failed with status"],
+    },
   ]
+  // altimate_change end
 
   export function classifyError(
     message: string,
@@ -475,6 +512,12 @@ export namespace Telemetry {
   export function computeInputSignature(args: Record<string, unknown>): string {
     const sig: Record<string, string> = {}
     for (const [k, v] of Object.entries(args)) {
+      // altimate_change start — redact sensitive keys in input signatures
+      if (isSensitiveKey(k)) {
+        sig[k] = "****"
+        continue
+      }
+      // altimate_change end
       if (v === null || v === undefined) {
         sig[k] = "null"
       } else if (typeof v === "string") {

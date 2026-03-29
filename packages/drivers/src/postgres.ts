@@ -22,6 +22,13 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       if (config.connection_string) {
         poolConfig.connectionString = config.connection_string
       } else {
+        // Validate required credentials before connecting to avoid cryptic
+        // SASL/SCRAM errors from the pg driver when password is missing
+        if (config.password != null && typeof config.password !== "string") {
+          throw new Error(
+            "PostgreSQL password must be a string. Check your warehouse configuration.",
+          )
+        }
         poolConfig.host = config.host ?? "127.0.0.1"
         poolConfig.port = config.port ?? 5432
         poolConfig.database = config.database ?? "postgres"
@@ -43,9 +50,10 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       const client = await pool.connect()
       try {
         if (config.statement_timeout) {
-          await client.query(
-            `SET statement_timeout = '${Number(config.statement_timeout)}ms'`,
-          )
+          const timeoutMs = Number(config.statement_timeout)
+          if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+            await client.query(`SET statement_timeout TO ${Math.round(timeoutMs)}`)
+          }
         }
 
         let query = sql

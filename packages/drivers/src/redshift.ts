@@ -25,6 +25,12 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       if (config.connection_string) {
         poolConfig.connectionString = config.connection_string
       } else {
+        // Validate password type to prevent cryptic SASL/SCRAM errors
+        if (config.password != null && typeof config.password !== "string") {
+          throw new Error(
+            "Redshift password must be a string. Check your warehouse configuration.",
+          )
+        }
         poolConfig.host = config.host ?? "127.0.0.1"
         poolConfig.port = config.port ?? 5439 // Redshift default
         poolConfig.database = config.database ?? "dev"
