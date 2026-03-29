@@ -10,6 +10,7 @@ export const AltimateCoreValidateTool = Tool.define("altimate_core_validate", {
     sql: z.string().describe("SQL query to validate"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),
+    dialect: z.string().optional().default("snowflake").describe("SQL dialect for validation"),
   }),
   async execute(args, ctx) {
     const hasSchema = !!(args.schema_path || (args.schema_context && Object.keys(args.schema_context).length > 0))
@@ -19,7 +20,7 @@ export const AltimateCoreValidateTool = Tool.define("altimate_core_validate", {
         "No schema provided. Provide schema_context or schema_path so table/column references can be resolved."
       return {
         title: "Validate: NO SCHEMA",
-        metadata: { success: false, valid: false, has_schema: false, error },
+        metadata: { success: false, valid: false, dialect: args.dialect, has_schema: false, error },
         output: `Error: ${error}`,
       }
     }
@@ -28,6 +29,7 @@ export const AltimateCoreValidateTool = Tool.define("altimate_core_validate", {
         sql: args.sql,
         schema_path: args.schema_path ?? "",
         schema_context: args.schema_context,
+        dialect: args.dialect,
       })
       const data = (result.data ?? {}) as Record<string, any>
       const error = result.error ?? data.error ?? extractValidationErrors(data)
@@ -42,6 +44,7 @@ export const AltimateCoreValidateTool = Tool.define("altimate_core_validate", {
         metadata: {
           success: true, // engine ran — validation errors are findings, not failures
           valid: data.valid,
+          dialect: args.dialect,
           has_schema: hasSchema,
           ...(error && { error }),
           ...(findings.length > 0 && { findings }),
@@ -52,7 +55,7 @@ export const AltimateCoreValidateTool = Tool.define("altimate_core_validate", {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Validate: ERROR",
-        metadata: { success: false, valid: false, has_schema: hasSchema, error: msg },
+        metadata: { success: false, valid: false, dialect: args.dialect, has_schema: hasSchema, error: msg },
         output: `Failed: ${msg}`,
       }
     }

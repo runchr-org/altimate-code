@@ -10,6 +10,7 @@ export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", 
     sql: z.string().describe("SQL query to validate semantically"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),
+    dialect: z.string().optional().default("snowflake").describe("SQL dialect for semantic validation"),
   }),
   async execute(args, ctx) {
     const hasSchema = !!(args.schema_path || (args.schema_context && Object.keys(args.schema_context).length > 0))
@@ -18,7 +19,7 @@ export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", 
         "No schema provided. Provide schema_context or schema_path so table/column references can be resolved."
       return {
         title: "Semantics: NO SCHEMA",
-        metadata: { success: false, valid: false, issue_count: 0, has_schema: false, error },
+        metadata: { success: false, valid: false, issue_count: 0, dialect: args.dialect, has_schema: false, error },
         output: `Error: ${error}`,
       }
     }
@@ -27,6 +28,7 @@ export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", 
         sql: args.sql,
         schema_path: args.schema_path ?? "",
         schema_context: args.schema_context,
+        dialect: args.dialect,
       })
       const data = (result.data ?? {}) as Record<string, any>
       const issueCount = data.issues?.length ?? 0
@@ -44,6 +46,7 @@ export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", 
           success: true, // engine ran — semantic issues are findings, not failures
           valid: data.valid,
           issue_count: issueCount,
+          dialect: args.dialect,
           has_schema: hasSchema,
           ...(error && { error }),
           ...(findings.length > 0 && { findings }),
@@ -54,7 +57,7 @@ export const AltimateCoreSemanticsTool = Tool.define("altimate_core_semantics", 
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Semantics: ERROR",
-        metadata: { success: false, valid: false, issue_count: 0, has_schema: hasSchema, error: msg },
+        metadata: { success: false, valid: false, issue_count: 0, dialect: args.dialect, has_schema: hasSchema, error: msg },
         output: `Failed: ${msg}`,
       }
     }

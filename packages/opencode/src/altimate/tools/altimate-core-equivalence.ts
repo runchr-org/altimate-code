@@ -11,6 +11,7 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
     sql2: z.string().describe("Second SQL query"),
     schema_path: z.string().optional().describe("Path to YAML/JSON schema file"),
     schema_context: z.record(z.string(), z.any()).optional().describe("Inline schema definition"),
+    dialect: z.string().optional().default("snowflake").describe("SQL dialect for equivalence checking"),
   }),
   async execute(args, ctx) {
     const hasSchema = !!(args.schema_path || (args.schema_context && Object.keys(args.schema_context).length > 0))
@@ -19,7 +20,7 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
         "No schema provided. Provide schema_context or schema_path so table/column references can be resolved."
       return {
         title: "Equivalence: NO SCHEMA",
-        metadata: { success: false, equivalent: false, has_schema: false, error },
+        metadata: { success: false, equivalent: false, dialect: args.dialect, has_schema: false, error },
         output: `Error: ${error}`,
       }
     }
@@ -29,6 +30,7 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
         sql2: args.sql2,
         schema_path: args.schema_path ?? "",
         schema_context: args.schema_context,
+        dialect: args.dialect,
       })
       const data = (result.data ?? {}) as Record<string, any>
       const error = result.error ?? data.error ?? extractEquivalenceErrors(data)
@@ -48,6 +50,7 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
         metadata: {
           success: !isRealFailure,
           equivalent: data.equivalent,
+          dialect: args.dialect,
           has_schema: hasSchema,
           ...(error && { error }),
           ...(findings.length > 0 && { findings }),
@@ -58,7 +61,7 @@ export const AltimateCoreEquivalenceTool = Tool.define("altimate_core_equivalenc
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Equivalence: ERROR",
-        metadata: { success: false, equivalent: false, has_schema: hasSchema, error: msg },
+        metadata: { success: false, equivalent: false, dialect: args.dialect, has_schema: hasSchema, error: msg },
         output: `Failed: ${msg}`,
       }
     }
