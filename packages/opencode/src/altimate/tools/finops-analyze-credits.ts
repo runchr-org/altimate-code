@@ -88,14 +88,16 @@ export const FinopsAnalyzeCreditsTool = Tool.define("finops_analyze_credits", {
         }
       }
 
+      const totalCredits = Number(result.total_credits ?? 0)
+      const daysAnalyzed = result.days_analyzed ?? args.days
       return {
-        title: `Credits: ${result.total_credits.toFixed(2)} over ${result.days_analyzed}d`,
-        metadata: { success: true, total_credits: result.total_credits },
+        title: `Credits: ${totalCredits.toFixed(2)} over ${daysAnalyzed}d`,
+        metadata: { success: true, total_credits: totalCredits },
         output: formatCreditsAnalysis(
-          result.total_credits as number,
-          result.warehouse_summary as unknown[],
-          result.recommendations as unknown[],
-          result.daily_usage as unknown[],
+          totalCredits,
+          (result.warehouse_summary ?? []) as unknown[],
+          (result.recommendations ?? []) as unknown[],
+          (result.daily_usage ?? []) as unknown[],
         ),
       }
     } catch (e) {

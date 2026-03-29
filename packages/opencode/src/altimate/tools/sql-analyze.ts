@@ -38,8 +38,8 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
       // there's an actual error (e.g. parse failure).
       const isRealFailure = !!result.error
       // altimate_change start — sql quality findings for telemetry
-      const findings: Telemetry.Finding[] = result.issues.map((issue) => ({
-        category: issue.rule ?? issue.type,
+      const findings: Telemetry.Finding[] = (result.issues ?? []).map((issue) => ({
+        category: issue.rule ?? issue.type ?? "analysis_issue",
       }))
       // altimate_change end
 
@@ -56,7 +56,7 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
       }
       // altimate_change end
       return {
-        title: `Analyze: ${result.error ? "ERROR" : `${result.issue_count} issue${result.issue_count !== 1 ? "s" : ""}`} [${result.confidence}]`,
+        title: `Analyze: ${result.error ? "ERROR" : `${result.issue_count ?? 0} issue${(result.issue_count ?? 0) !== 1 ? "s" : ""}`} [${result.confidence ?? "unknown"}]`,
         metadata: {
           success: !isRealFailure,
           issueCount: result.issue_count,
@@ -91,24 +91,27 @@ function formatAnalysis(result: SqlAnalyzeResult): string {
     return `Analysis failed: ${result.error}`
   }
 
-  if (result.issues.length === 0) {
+  const issues = result.issues ?? []
+  if (issues.length === 0) {
     return "No anti-patterns or issues detected."
   }
 
+  const issueCount = result.issue_count ?? issues.length
   const lines: string[] = [
-    `Found ${result.issue_count} issue${result.issue_count !== 1 ? "s" : ""} (confidence: ${result.confidence}):`,
+    `Found ${issueCount} issue${issueCount !== 1 ? "s" : ""} (confidence: ${result.confidence ?? "unknown"}):`,
   ]
-  if (result.confidence_factors.length > 0) {
-    lines.push(`  Note: ${result.confidence_factors.join("; ")}`)
+  const factors = result.confidence_factors ?? []
+  if (factors.length > 0) {
+    lines.push(`  Note: ${factors.join("; ")}`)
   }
   lines.push("")
 
-  for (const issue of result.issues) {
+  for (const issue of issues) {
     const loc = issue.location ? ` — ${issue.location}` : ""
-    const conf = issue.confidence !== "high" ? ` [${issue.confidence} confidence]` : ""
-    lines.push(`  [${issue.severity.toUpperCase()}] ${issue.type}${conf}`)
-    lines.push(`    ${issue.message}${loc}`)
-    lines.push(`    → ${issue.recommendation}`)
+    const conf = issue.confidence !== "high" ? ` [${issue.confidence ?? "unknown"} confidence]` : ""
+    lines.push(`  [${String(issue.severity ?? "unknown").toUpperCase()}] ${issue.type ?? "unknown"}${conf}`)
+    lines.push(`    ${issue.message ?? ""}${loc}`)
+    lines.push(`    → ${issue.recommendation ?? ""}`)
     lines.push("")
   }
 

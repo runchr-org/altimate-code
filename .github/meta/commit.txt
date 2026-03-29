@@ -1,17 +1,14 @@
-ci: add Verdaccio sanity suite to CI and release workflows
+fix: defensive null guards in tool formatters and DuckDB concurrent access retry (#570)
 
-Adds the Verdaccio-based sanity suite (real `npm install -g` flow)
-to both CI and release pipelines:
-
-**CI (`ci.yml`):**
-- New `sanity-verdaccio` job on push to main
-- Builds linux-x64 binary + dbt-tools, runs full Docker Compose suite
-- Independent of other jobs (doesn't block PRs)
-
-**Release (`release.yml`):**
-- New `sanity-verdaccio` job between build and npm publish
-- Downloads linux-x64 artifact from build matrix
-- **Blocks `publish-npm`** — broken install flow prevents release
-- Dependency chain: build → sanity-verdaccio → publish-npm → github-release
+- Add null/undefined guards across 8 tool formatters to prevent literal
+  `undefined` in user-facing output (sql-analyze, schema-inspect,
+  sql-translate, dbt-manifest, finops-analyze-credits, warehouse-list,
+  altimate-core-check, altimate-core-rewrite)
+- Add `error: msg` to catch block metadata in schema-inspect,
+  dbt-manifest, warehouse-list so telemetry can classify exceptions
+- DuckDB driver: auto-retry in `READ_ONLY` mode on `database is locked`
+  errors, with clear actionable error message
+- Add simulation suite (839 mock + 346 real E2E scenarios) covering
+  10 personas x 11 dialects x 14 use-case categories
 
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>

@@ -29,7 +29,7 @@ export const SqlTranslateTool = Tool.define("sql_translate", {
           success: result.success,
           source_dialect: result.source_dialect,
           target_dialect: result.target_dialect,
-          warningCount: result.warnings.length,
+          warningCount: (result.warnings ?? []).length,
           ...(result.error && { error: result.error }),
         },
         output: formatTranslation(result, args.sql),
@@ -70,9 +70,10 @@ function formatTranslation(result: SqlTranslateResult, originalSql: string): str
   lines.push(result.translated_sql ?? "")
   lines.push("")
 
-  if (result.warnings.length > 0) {
+  const warnings = result.warnings ?? []
+  if (warnings.length > 0) {
     lines.push("--- Warnings ---")
-    for (const warning of result.warnings) {
+    for (const warning of warnings) {
       lines.push(`  ! ${warning}`)
     }
     lines.push("")

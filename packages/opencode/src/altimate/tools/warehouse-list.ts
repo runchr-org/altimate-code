@@ -9,7 +9,8 @@ export const WarehouseListTool = Tool.define("warehouse_list", {
     try {
       const result = await Dispatcher.call("warehouse.list", {})
 
-      if (result.warehouses.length === 0) {
+      const warehouses = result.warehouses ?? []
+      if (warehouses.length === 0) {
         return {
           title: "Warehouses: none configured",
           metadata: { count: 0 },
@@ -18,20 +19,20 @@ export const WarehouseListTool = Tool.define("warehouse_list", {
       }
 
       const lines: string[] = ["Name | Type | Database", "-----|------|--------"]
-      for (const wh of result.warehouses) {
+      for (const wh of warehouses) {
         lines.push(`${wh.name} | ${wh.type} | ${wh.database ?? "-"}`)
       }
 
       return {
-        title: `Warehouses: ${result.warehouses.length} configured`,
-        metadata: { count: result.warehouses.length },
+        title: `Warehouses: ${warehouses.length} configured`,
+        metadata: { count: warehouses.length },
         output: lines.join("\n"),
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Warehouses: ERROR",
-        metadata: { count: 0 },
+        metadata: { count: 0, error: msg },
         output: `Failed to list warehouses: ${msg}\n\nCheck your connection configuration and try again.`,
       }
     }
