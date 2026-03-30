@@ -114,12 +114,15 @@ function getOrCreateTrace(sessionID: string): Trace | null {
 
 const startEventStream = (input: { directory: string; workspaceID?: string }) => {
   if (eventStream.abort) eventStream.abort.abort()
-  // Clear stale per-stream trace state before starting a new stream instance
+  // altimate_change start — crash: flush stale traces before clearing
+  // Flush any in-flight traces synchronously before clearing — endTrace() is
+  // async and a crash during the gap would lose trace data.
   for (const [, trace] of sessionTraces) {
     void trace.endTrace().catch(() => {})
   }
   sessionTraces.clear()
   sessionUserMsgIds.clear()
+  // altimate_change end
 
   const abort = new AbortController()
   eventStream.abort = abort
@@ -242,9 +245,15 @@ const startEventStream = (input: { directory: string; workspaceID?: string }) =>
             if (status === "idle" && sid) {
               const trace = sessionTraces.get(sid)
               if (trace) {
-                void trace.endTrace().catch(() => {})
-                sessionTraces.delete(sid)
-                sessionUserMsgIds.delete(sid)
+                // altimate_change start — crash: defer deletion until endTrace() completes
+                // Keep the trace in sessionTraces during async teardown so
+                // flushAllTracesSync() can still reach it if a crash occurs
+                // while endTrace() is in flight.
+                void trace.endTrace().catch(() => {}).finally(() => {
+                  sessionTraces.delete(sid)
+                  sessionUserMsgIds.delete(sid)
+                })
+                // altimate_change end
               }
             }
           }
@@ -338,13 +347,17 @@ Rpc.listen(rpc)
 // NOTE: Bun Workers do NOT receive OS signals (SIGINT, SIGTERM, SIGHUP) —
 // those are delivered only to the main thread. Signal-based flush is handled
 // in thread.ts by terminating the worker, which triggers the "exit" event here.
-let hasFlushed = false
+let firstFlushReason: string | undefined
 function flushAllTracesSync(reason: string) {
-  if (hasFlushed) return
-  hasFlushed = true
+  // Preserve the most specific reason from the first flush (e.g., the uncaught
+  // exception message) even if a later handler (exit) calls again with a
+  // generic reason. Subsequent calls still flush — new traces may have been
+  // created since the first call.
+  const effectiveReason = firstFlushReason ?? reason
+  firstFlushReason ??= reason
   for (const [, trace] of sessionTraces) {
     try {
-      trace.flushSync(reason)
+      trace.flushSync(effectiveReason)
     } catch {
       // flushSync is best-effort — must never throw in an exit handler
     }

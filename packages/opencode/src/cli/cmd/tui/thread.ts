@@ -154,21 +154,30 @@ export const TuiThreadCommand = cmd({
 
       // altimate_change start — crash: flush worker traces on signals
       // Bun Workers don't receive OS signals — only the main thread does.
-      // On SIGINT/SIGTERM/SIGHUP, terminate the worker and briefly wait so
-      // its "exit" handler fires and flushes all active session traces to disk.
-      // Bun.sleepSync gives the worker thread time to process the termination
-      // before the main thread continues to process.exit().
-      const emergencyTerminate = () => {
-        try {
-          worker.terminate()
-          Bun.sleepSync(50)
-        } catch {
-          // best-effort — crash handler must never throw
+      // On SIGINT/SIGTERM/SIGHUP, terminate the worker so its "exit" handler
+      // fires and flushes all active session traces to disk.
+      // After cleanup, remove the handler and re-raise the signal to restore
+      // default behavior (process termination). This avoids swallowing signals
+      // which would leave the process running after a kill.
+      const makeSignalHandler = (signal: NodeJS.Signals) => {
+        const handler = () => {
+          try {
+            worker.terminate()
+            Bun.sleepSync(50)
+          } catch {
+            // best-effort — crash handler must never throw
+          }
+          process.off(signal, handler)
+          process.kill(process.pid, signal)
         }
+        return handler
       }
-      process.on("SIGINT", emergencyTerminate)
-      process.on("SIGTERM", emergencyTerminate)
-      process.on("SIGHUP", emergencyTerminate)
+      const onSigint = makeSignalHandler("SIGINT")
+      const onSigterm = makeSignalHandler("SIGTERM")
+      const onSighup = makeSignalHandler("SIGHUP")
+      process.on("SIGINT", onSigint)
+      process.on("SIGTERM", onSigterm)
+      process.on("SIGHUP", onSighup)
       // altimate_change end
 
       let stopped = false
@@ -179,9 +188,9 @@ export const TuiThreadCommand = cmd({
         process.off("unhandledRejection", error)
         process.off("SIGUSR2", reload)
         // altimate_change start — crash: remove emergency handlers on clean shutdown
-        process.off("SIGINT", emergencyTerminate)
-        process.off("SIGTERM", emergencyTerminate)
-        process.off("SIGHUP", emergencyTerminate)
+        process.off("SIGINT", onSigint)
+        process.off("SIGTERM", onSigterm)
+        process.off("SIGHUP", onSighup)
         // altimate_change end
         await withTimeout(client.call("shutdown", undefined), 5000).catch((error) => {
           Log.Default.warn("worker shutdown failed", {
