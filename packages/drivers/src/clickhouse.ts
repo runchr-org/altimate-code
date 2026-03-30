@@ -71,7 +71,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       // This prevents comment-like content inside strings from fooling detection,
       // and ensures leading/trailing comments don't hide keywords.
       const sqlCleaned = sql
-        .replace(/'(?:[^'\\]|\\.)*'/g, "") // strip single-quoted strings
+        .replace(/'(?:[^'\\]|\\.|\'{2})*'/g, "") // strip single-quoted strings (handles \' and '' escaping)
         .replace(/--[^\n]*/g, "") // strip line comments
         .replace(/\/\*[\s\S]*?\*\//g, "") // strip block comments
 

@@ -185,6 +185,12 @@ describe("ClickHouse driver unit tests", () => {
       await connector.execute("SELECT '-- LIMIT 100' FROM t", 10)
       expect(mockQueryCalls[0].query).toContain("LIMIT 11")
     })
+
+    test("doubled-quote escaped string does NOT break LIMIT check", async () => {
+      mockQueryResult = [{ id: 1 }]
+      await connector.execute("SELECT 'it''s -- LIMIT 5' FROM t", 10)
+      expect(mockQueryCalls[0].query).toContain("LIMIT 11")
+    })
   })
 
   // --- Truncation detection ---
