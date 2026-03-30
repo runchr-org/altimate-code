@@ -66,10 +66,19 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       }
       const effectiveLimit = limit === undefined ? 1000 : limit
       let query = sql
+
+      // Strip string literals, then comments, for accurate SQL heuristic checks.
+      // This prevents comment-like content inside strings from fooling detection,
+      // and ensures leading/trailing comments don't hide keywords.
+      const sqlCleaned = sql
+        .replace(/'(?:[^'\\]|\\.)*'/g, "") // strip single-quoted strings
+        .replace(/--[^\n]*/g, "") // strip line comments
+        .replace(/\/\*[\s\S]*?\*\//g, "") // strip block comments
+
       // Only SELECT and WITH...SELECT support LIMIT — SHOW/DESCRIBE/EXPLAIN/EXISTS do not
-      const supportsLimit = /^\s*(SELECT|WITH)\b/i.test(sql)
+      const supportsLimit = /^\s*(SELECT|WITH)\b/i.test(sqlCleaned)
       const isDDL =
-        /^\s*(INSERT|CREATE|DROP|ALTER|TRUNCATE|RENAME|ATTACH|DETACH|OPTIMIZE|SYSTEM|SET|USE|GRANT|REVOKE)\b/i.test(sql)
+        /^\s*(INSERT|CREATE|DROP|ALTER|TRUNCATE|RENAME|ATTACH|DETACH|OPTIMIZE|SYSTEM|SET|USE|GRANT|REVOKE)\b/i.test(sqlCleaned)
 
       // DDL/DML: use client.command() — no result set expected
       if (isDDL) {
@@ -79,10 +88,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
 
       // Read queries: use client.query() with JSONEachRow format
       // Only append LIMIT for SELECT/WITH queries that don't already have one.
-      // Strip SQL comments before checking for LIMIT to prevent bypass via `-- LIMIT`.
-      const sqlNoComments = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
-      if (supportsLimit && effectiveLimit > 0 && !/\bLIMIT\b/i.test(sqlNoComments)) {
-        query = `${sql.replace(/;\s*$/, "")} LIMIT ${effectiveLimit + 1}`
+      if (supportsLimit && effectiveLimit > 0 && !/\bLIMIT\b/i.test(sqlCleaned)) {
+        query = `${sql.replace(/;\s*$/, "")}\nLIMIT ${effectiveLimit + 1}`
       }
 
       const resultSet = await client.query({
@@ -147,8 +154,9 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       return rows.map((r) => ({
         name: r.name as string,
         data_type: r.type as string,
-        // Detect Nullable from the type string directly — stable across all versions
-        nullable: /^Nullable\b/i.test((r.type as string) ?? ""),
+        // Detect Nullable from the type string directly — stable across all versions.
+        // LowCardinality(Nullable(T)) is also nullable (LowCardinality is a storage optimization).
+        nullable: /^(?:LowCardinality\(\s*)?Nullable\b/i.test((r.type as string) ?? ""),
       }))
     },
 

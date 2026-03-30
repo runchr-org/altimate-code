@@ -623,8 +623,6 @@ describe("Connection registry", () => {
       reset()
     })
 
-    // ClickHouse test removed — ClickHouse is now a supported driver (v0.5.16)
-
     test("Cassandra gives helpful hint", async () => {
       setConfigs({ cass: { type: "cassandra" } as any })
       try {

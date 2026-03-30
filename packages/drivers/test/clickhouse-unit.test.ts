@@ -166,6 +166,25 @@ describe("ClickHouse driver unit tests", () => {
       await connector.execute("SELECT * FROM t LIMIT 5 -- max rows", 10)
       expect(mockQueryCalls[0].query).not.toContain("LIMIT 11")
     })
+
+    test("trailing comment does NOT hide injected LIMIT", async () => {
+      mockQueryResult = [{ id: 1 }]
+      await connector.execute("SELECT * FROM t -- my note", 10)
+      // LIMIT must be on a new line so trailing comments don't swallow it
+      expect(mockQueryCalls[0].query).toContain("\nLIMIT 11")
+    })
+
+    test("leading comment does NOT bypass LIMIT injection", async () => {
+      mockQueryResult = [{ id: 1 }]
+      await connector.execute("-- my query\nSELECT * FROM t", 10)
+      expect(mockQueryCalls[0].query).toContain("LIMIT 11")
+    })
+
+    test("string literal with comment-like content does NOT break LIMIT check", async () => {
+      mockQueryResult = [{ id: 1 }]
+      await connector.execute("SELECT '-- LIMIT 100' FROM t", 10)
+      expect(mockQueryCalls[0].query).toContain("LIMIT 11")
+    })
   })
 
   // --- Truncation detection ---
@@ -237,9 +256,14 @@ describe("ClickHouse driver unit tests", () => {
       expect(cols[0].nullable).toBe(false)
     })
 
-    test("LowCardinality(Nullable(String)) is NOT nullable at column level", async () => {
-      // Nullable is nested inside LowCardinality — column-level is LowCardinality
+    test("LowCardinality(Nullable(String)) IS nullable — LowCardinality is storage optimization", async () => {
       mockQueryResult = [{ name: "col1", type: "LowCardinality(Nullable(String))" }]
+      const cols = await connector.describeTable("default", "t")
+      expect(cols[0].nullable).toBe(true)
+    })
+
+    test("LowCardinality(String) is NOT nullable", async () => {
+      mockQueryResult = [{ name: "col1", type: "LowCardinality(String)" }]
       const cols = await connector.describeTable("default", "t")
       expect(cols[0].nullable).toBe(false)
     })
