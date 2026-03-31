@@ -47,7 +47,16 @@ function formatColumnLineage(data: Record<string, any>): string {
   if (data.column_dict && Object.keys(data.column_dict).length > 0) {
     lines.push("Column Mappings:")
     for (const [target, sources] of Object.entries(data.column_dict)) {
-      const srcList = Array.isArray(sources) ? (sources as string[]).join(", ") : JSON.stringify(sources)
+      const srcList = Array.isArray(sources)
+        ? sources
+            .map((s: any) => {
+              if (typeof s === "string") return s
+              if (s && s.source_table && s.source_column) return `${s.source_table}.${s.source_column}`
+              if (s && s.source) return String(s.source)
+              return JSON.stringify(s)
+            })
+            .join(", ")
+        : JSON.stringify(sources)
       lines.push(`  ${target} ← ${srcList}`)
     }
     lines.push("")

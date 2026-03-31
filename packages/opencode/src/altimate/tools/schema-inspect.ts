@@ -15,11 +15,22 @@ export const SchemaInspectTool = Tool.define("schema_inspect", {
   }),
   async execute(args, ctx) {
     try {
-      const result = await Dispatcher.call("schema.inspect", {
+      const raw = (await Dispatcher.call("schema.inspect", {
         table: args.table,
         schema_name: args.schema_name,
         warehouse: args.warehouse,
-      })
+      })) as any
+
+      // Surface dispatcher-level errors (e.g. { success: false, error: "..." })
+      if (!raw || raw.success === false || raw.error) {
+        const errorMsg = (raw?.error as string) ?? "Schema inspection failed"
+        return {
+          title: "Schema: ERROR",
+          metadata: { columnCount: 0, rowCount: undefined, error: errorMsg },
+          output: `Failed to inspect schema: ${errorMsg}\n\nEnsure the dispatcher is running and a warehouse connection is configured.`,
+        }
+      }
+      const result = raw as SchemaInspectResult
 
       // altimate_change start — progressive disclosure suggestions
       let output = formatSchema(result)
