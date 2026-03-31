@@ -26,12 +26,22 @@ export const SqlAnalyzeTool = Tool.define("sql_analyze", {
   async execute(args, ctx) {
     const hasSchema = !!(args.schema_path || (args.schema_context && Object.keys(args.schema_context).length > 0))
     try {
-      const result = await Dispatcher.call("sql.analyze", {
+      const raw = await Dispatcher.call("sql.analyze", {
         sql: args.sql,
         dialect: args.dialect,
         schema_path: args.schema_path,
         schema_context: args.schema_context,
       })
+
+      // Guard against null/undefined/non-object responses
+      if (raw == null || typeof raw !== "object") {
+        return {
+          title: "Analyze: ERROR",
+          metadata: { success: false, issueCount: 0, confidence: "unknown", dialect: args.dialect, has_schema: hasSchema, error: "Unexpected response from analysis handler" },
+          output: "Analysis failed: unexpected response format.",
+        }
+      }
+      const result = raw
 
       // The handler returns success=true when analysis completes (issues are
       // reported via issues/issue_count). Only treat it as a failure when

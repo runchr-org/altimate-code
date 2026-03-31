@@ -20,11 +20,21 @@ export const LineageCheckTool = Tool.define("lineage_check", {
   }),
   async execute(args, ctx) {
     try {
-      const result = await Dispatcher.call("lineage.check", {
+      const raw = await Dispatcher.call("lineage.check", {
         sql: args.sql,
         dialect: args.dialect,
         schema_context: args.schema_context,
       })
+
+      // Guard against null/undefined/non-object responses
+      if (raw == null || typeof raw !== "object") {
+        return {
+          title: "Lineage: ERROR",
+          metadata: { success: false, error: "Unexpected response from lineage handler" },
+          output: "Lineage check failed: unexpected response format.",
+        }
+      }
+      const result = raw as LineageCheckResult
 
       const data = (result.data ?? {}) as Record<string, any>
       if (result.error) {
