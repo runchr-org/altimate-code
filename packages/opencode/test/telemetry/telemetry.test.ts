@@ -1628,13 +1628,15 @@ describe("telemetry.classifyError", () => {
     expect(Telemetry.classifyError("Invalid dialect specified")).toBe("validation")
     expect(Telemetry.classifyError("Missing required field")).toBe("validation")
     expect(Telemetry.classifyError("Required parameter 'query' not provided")).toBe("validation")
-    // altimate_change start — file_stale split out from validation; "does not exist" moved to http_error
+    // altimate_change start — file_stale split out from validation
     // These are now classified as file_stale, not validation
     expect(Telemetry.classifyError("You must read file /path/to/file before overwriting it")).toBe("file_stale")
     expect(Telemetry.classifyError("File has been modified since it was last read")).toBe("file_stale")
     expect(Telemetry.classifyError("You must read file before overwriting it. Use the Read tool first")).toBe("file_stale")
-    // HTTP 404 "does not exist" is now http_error
+    // HTTP 404 "does not exist" matches http_error first (pattern priority), not validation
     expect(Telemetry.classifyError("HTTP 404: https://example.com/page does not exist")).toBe("http_error")
+    // SQL "does not exist" matches validation (no http_error keywords present)
+    expect(Telemetry.classifyError("error: column foo does not exist")).toBe("validation")
     // altimate_change end
   })
 

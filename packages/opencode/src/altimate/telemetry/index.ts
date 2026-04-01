@@ -795,7 +795,7 @@ export namespace Telemetry {
       keywords: ["status code: 4", "status code: 5", "request failed with status", "http 404", "http 410", "http 429", "http 451", "http 403"],
     },
     // altimate_change end
-    // altimate_change start — split file_stale out of validation; remove "does not exist" (was catching HTTP 404s)
+    // altimate_change start — split file_stale out of validation for cleaner triage
     {
       class: "file_stale",
       keywords: [
@@ -811,6 +811,7 @@ export namespace Telemetry {
         "invalid",
         "missing",
         "required",
+        "does not exist",
       ],
     },
     // altimate_change end
