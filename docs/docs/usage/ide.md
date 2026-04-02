@@ -1,8 +1,18 @@
-# IDE
+# IDE Integration
 
 altimate-code integrates with your IDE via the [Datamates extension](https://marketplace.visualstudio.com/items?itemName=altimateai.vscode-altimate-mcp-server), giving you AI-powered chat with 100+ data engineering tools directly in your editor.
 
 ---
+
+## Prerequisites
+
+Install the altimate-code CLI globally:
+
+```bash
+npm install -g altimate-code
+```
+
+The Datamates extension requires this to be installed for the chat and tools to function.
 
 ## Install the Extension
 
@@ -10,6 +20,7 @@ Install the Datamates extension for your IDE:
 
 - **VS Code** — [Microsoft Marketplace](https://marketplace.visualstudio.com/items?itemName=altimateai.vscode-altimate-mcp-server)
 - **Cursor / other VS Code-compatible editors** — [Open VSX Registry](https://open-vsx.org/extension/altimateai/vscode-altimate-mcp-server)
+- **Windsurf** — Install via the built-in extension marketplace (search "Datamates")
 
 ## Open Altimate Code Chat
 

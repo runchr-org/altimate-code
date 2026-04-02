@@ -38,10 +38,9 @@ Managed LLM access with dynamic routing across Sonnet 4.6, Opus 4.6, GPT-5.4, GP
 
 The gateway dynamically routes each request to the best model for the task. You pay a flat token price regardless of which model handles your request.
 
-- Zero data retention — prompts and responses are never stored
-- Uses Azure Foundry and AWS Bedrock as subprocessors with ZDR
+- Prompts and responses are not stored
 - BYOK is always free and unlimited alongside the gateway
-- Stores only metadata (token counts, latency) to improve model ranking and routing
+- Stores limited metadata (token counts, latency, model used) for billing and routing
 
 For full pricing tiers and details, see the [Altimate LLM Gateway guide](https://datamates-docs.myaltimate.com/user-guide/components/llm-gateway/).
 
