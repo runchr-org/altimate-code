@@ -57,6 +57,9 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
         clientConfig.clickhouse_settings = config.clickhouse_settings
       }
 
+      // Silence the client's internal stderr logger — its ERROR-level output
+      // writes raw lines directly to stderr and corrupts terminal TUI rendering.
+      clientConfig.log = { level: 127 } // ClickHouseLogLevel.OFF = 127
       client = createClient(clientConfig)
     },
 
