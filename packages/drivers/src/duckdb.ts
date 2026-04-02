@@ -51,28 +51,47 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
 
   return {
     async connect() {
-      // altimate_change start — use synchronous constructor; bun's runtime never fires
-      // async native callbacks, causing a 2s timeout. The sync form throws on error.
-      const tryConnect = (accessMode?: string): any => {
-        const opts = accessMode ? { access_mode: accessMode } : undefined
-        try {
-          return opts ? new duckdb.Database(dbPath, opts) : new duckdb.Database(dbPath)
-        } catch (err: any) {
-          const msg = (err as Error).message || String(err)
-          if (msg.toLowerCase().includes("locked") || msg.includes("SQLITE_BUSY") || msg.includes("DUCKDB_LOCKED")) {
-            throw new Error("DUCKDB_LOCKED")
-          }
-          throw err
-        }
-      }
+      // altimate_change start — retry with read-only on lock errors
+      const tryConnect = (accessMode?: string): Promise<any> =>
+        new Promise<any>((resolve, reject) => {
+          let resolved = false
+          let timeout: ReturnType<typeof setTimeout> | undefined
+          const opts = accessMode ? { access_mode: accessMode } : undefined
+          const instance = new duckdb.Database(
+            dbPath,
+            opts,
+            (err: Error | null) => {
+              if (resolved) { if (instance && typeof instance.close === "function") instance.close(); return }
+              resolved = true
+              if (timeout) clearTimeout(timeout)
+              if (err) {
+                const msg = err.message || String(err)
+                if (msg.toLowerCase().includes("locked") || msg.includes("SQLITE_BUSY") || msg.includes("DUCKDB_LOCKED")) {
+                  reject(new Error("DUCKDB_LOCKED"))
+                } else {
+                  reject(err)
+                }
+              } else {
+                resolve(instance)
+              }
+            },
+          )
+          // Bun: native callback may not fire; fall back after 2s
+          timeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true
+              reject(new Error(`Timed out opening DuckDB database "${dbPath}"`))
+            }
+          }, 2000)
+        })
 
       try {
-        db = tryConnect()
+        db = await tryConnect()
       } catch (err: any) {
         if (err.message === "DUCKDB_LOCKED" && dbPath !== ":memory:") {
           // Retry in read-only mode — allows concurrent reads
           try {
-            db = tryConnect("READ_ONLY")
+            db = await tryConnect("READ_ONLY")
           } catch (retryErr) {
             throw wrapDuckDBError(
               retryErr instanceof Error ? retryErr : new Error(String(retryErr)),
