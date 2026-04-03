@@ -530,6 +530,91 @@ describe("validateCredentials", () => {
 })
 
 // ---------------------------------------------------------------------------
+// resolveIntegrations — tool expansion via enable_all / fallback to key
+// ---------------------------------------------------------------------------
+
+describe("resolveIntegrations", () => {
+  const testHome = path.join(tmpRoot, "resolve-int-test")
+  const originalFetch = globalThis.fetch
+
+  beforeEach(async () => {
+    process.env.OPENCODE_TEST_HOME = testHome
+    await fsp.mkdir(testHome, { recursive: true })
+    // Write valid credentials so getCredentials() succeeds
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "https://api.test.com",
+        altimateInstanceName: "test",
+        altimateApiKey: "key123",
+      }),
+    )
+  })
+
+  afterEach(async () => {
+    globalThis.fetch = originalFetch
+    delete process.env.OPENCODE_TEST_HOME
+    await fsp.rm(testHome, { recursive: true, force: true }).catch(() => {})
+  })
+
+  test("expands enable_all into multiple tool entries", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify([
+          {
+            id: "10",
+            name: "SQL Tools",
+            tools: [{ key: "sql-query", enable_all: ["sql-query", "sql-explain", "sql-format"] }],
+          },
+        ]),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    const result = await AltimateApi.resolveIntegrations(["10"])
+    expect(result).toEqual([
+      {
+        id: "10",
+        tools: [{ key: "sql-query" }, { key: "sql-explain" }, { key: "sql-format" }],
+      },
+    ])
+  })
+
+  test("falls back to tool.key when enable_all is absent", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify([
+          {
+            id: "20",
+            name: "Schema",
+            tools: [{ key: "schema-read" }, { key: "schema-write" }],
+          },
+        ]),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    const result = await AltimateApi.resolveIntegrations(["20"])
+    expect(result).toEqual([
+      {
+        id: "20",
+        tools: [{ key: "schema-read" }, { key: "schema-write" }],
+      },
+    ])
+  })
+
+  test("returns empty tools for unknown integration ID", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([{ id: "99", name: "Other", tools: [{ key: "other-tool" }] }]), {
+        status: 200,
+      })) as unknown as typeof fetch
+
+    const result = await AltimateApi.resolveIntegrations(["nonexistent"])
+    expect(result).toEqual([{ id: "nonexistent", tools: [] }])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // slugify
 // ---------------------------------------------------------------------------
 
