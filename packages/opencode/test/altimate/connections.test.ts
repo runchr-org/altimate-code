@@ -249,13 +249,17 @@ describe("CredentialStore", () => {
   })
 
   // altimate_change start — cover remaining SENSITIVE_FIELDS entries not in the test above
-  test("isSensitiveField covers BigQuery, SSL, and SSH credential fields", () => {
+  test("isSensitiveField covers BigQuery, SSL, SSH, and TLS credential fields", () => {
     expect(CredentialStore.isSensitiveField("credentials_json")).toBe(true)
     expect(CredentialStore.isSensitiveField("keyfile_json")).toBe(true)
     expect(CredentialStore.isSensitiveField("ssl_key")).toBe(true)
     expect(CredentialStore.isSensitiveField("ssl_cert")).toBe(true)
     expect(CredentialStore.isSensitiveField("ssl_ca")).toBe(true)
     expect(CredentialStore.isSensitiveField("ssh_password")).toBe(true)
+    // ClickHouse TLS fields added in #574
+    expect(CredentialStore.isSensitiveField("tls_key")).toBe(true)
+    expect(CredentialStore.isSensitiveField("tls_cert")).toBe(true)
+    expect(CredentialStore.isSensitiveField("tls_ca_cert")).toBe(true)
   })
   // altimate_change end
 
