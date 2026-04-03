@@ -404,6 +404,24 @@ const MAX_STEPS = 200
 // ---------------------------------------------------------------------------
 
 /**
+ * Quote a SQL identifier using the correct delimiter for the dialect.
+ */
+function quoteIdentForDialect(identifier: string, dialect: string): string {
+  switch (dialect) {
+    case "mysql":
+    case "mariadb":
+    case "clickhouse":
+      return `\`${identifier.replace(/`/g, "``")}\``
+    case "tsql":
+    case "fabric":
+      return `[${identifier.replace(/\]/g, "]]")}]`
+    default:
+      // ANSI SQL: Postgres, Snowflake, BigQuery, DuckDB, Oracle, Redshift, etc.
+      return `"${identifier.replace(/"/g, '""')}"`
+  }
+}
+
+/**
  * Build a DATE_TRUNC expression appropriate for the warehouse dialect.
  */
 function dateTruncExpr(granularity: string, column: string, dialect: string): string {
@@ -421,7 +439,7 @@ function dateTruncExpr(granularity: string, column: string, dialect: string): st
     case "oracle": {
       // Oracle uses TRUNC() with format models — 'WEEK' is invalid, use 'IW' for ISO week
       const oracleFmt: Record<string, string> = {
-        day: "DDD",
+        day: "DD",
         week: "IW",
         month: "MM",
         year: "YYYY",
@@ -465,15 +483,16 @@ function buildPartitionDiscoverySQL(
 ): string {
   const where = whereClause ? `WHERE ${whereClause}` : ""
   const mode = partitionMode(granularity, bucketSize)
+  const quotedCol = quoteIdentForDialect(partitionColumn, dialect)
 
   let expr: string
   if (mode === "numeric") {
-    expr = `FLOOR(${partitionColumn} / ${bucketSize}) * ${bucketSize}`
+    expr = `FLOOR(${quotedCol} / ${bucketSize}) * ${bucketSize}`
   } else if (mode === "date") {
-    expr = dateTruncExpr(granularity!, partitionColumn, dialect)
+    expr = dateTruncExpr(granularity!, quotedCol, dialect)
   } else {
     // categorical — raw distinct values, no transformation
-    expr = partitionColumn
+    expr = quotedCol
   }
 
   return `SELECT DISTINCT ${expr} AS _p FROM ${table} ${where} ORDER BY _p`
@@ -490,8 +509,8 @@ function buildPartitionWhereClause(
   dialect: string,
 ): string {
   const mode = partitionMode(granularity, bucketSize)
-  // Quote the column identifier to handle special characters and reserved words
-  const quotedCol = `"${partitionColumn.replace(/"/g, '""')}"`
+  // Quote the column identifier using dialect-appropriate delimiters
+  const quotedCol = quoteIdentForDialect(partitionColumn, dialect)
 
   if (mode === "numeric") {
     const lo = Number(partitionValue)
@@ -592,6 +611,15 @@ function mergeOutcomes(accumulated: unknown, next: unknown): unknown {
  * then aggregate results.
  */
 async function runPartitionedDiff(params: DataDiffParams): Promise<DataDiffResult> {
+  // Partitioned diff requires table names — can't partition a SQL query by column
+  if (isQuery(params.source) || isQuery(params.target)) {
+    return {
+      success: false,
+      error: "partition_column cannot be used when source or target is a SQL query. Use table names instead, or remove partition_column.",
+      steps: 0,
+    }
+  }
+
   const resolveDialect = (warehouse: string | undefined): string => {
     if (warehouse) {
       const cfg = Registry.getConfig(warehouse)
