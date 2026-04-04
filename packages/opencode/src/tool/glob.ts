@@ -83,7 +83,11 @@ export const GlobTool = Tool.define("glob", {
         })
       }
     } catch (err: any) {
-      if (timeout.signal.aborted) {
+      if (
+        err?.name === "AbortError" &&
+        timeout.signal.aborted &&
+        !ctx.abort?.aborted
+      ) {
         // Our timeout fired — return partial results
         timedOut = true
       } else {

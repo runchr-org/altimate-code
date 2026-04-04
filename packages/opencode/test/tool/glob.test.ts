@@ -197,6 +197,39 @@ describe("tool.glob", () => {
     })
   })
 
+  test("propagates non-abort errors instead of treating as timeout", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const glob = await GlobTool.init()
+        // Searching a non-existent path should throw ENOENT, not return "timed out"
+        const badPath = path.join(tmp.path, "nonexistent-dir-12345")
+        await expect(
+          glob.execute({ pattern: "*.txt", path: badPath }, ctx),
+        ).rejects.toThrow()
+      },
+    })
+  })
+
+  test("completes without timeout on small directories", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "a.txt"), "hello")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const glob = await GlobTool.init()
+        const result = await glob.execute({ pattern: "*.txt" }, { ...ctx, abort: undefined })
+        expect(result.metadata.count).toBe(1)
+        expect(result.metadata.truncated).toBe(false)
+        expect(result.output).not.toContain("timed out")
+      },
+    })
+  })
+
   test("excludes dist and build by default", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
