@@ -124,6 +124,409 @@ describe("getCredentials", () => {
     )
     await expect(AltimateApi.getCredentials()).rejects.toThrow()
   })
+
+  test("resolves ${env:VAR} substitution in all fields", async () => {
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "${env:TEST_ALT_URL}",
+        altimateInstanceName: "${env:TEST_ALT_INSTANCE}",
+        altimateApiKey: "${env:TEST_ALT_KEY}",
+      }),
+    )
+    process.env.TEST_ALT_URL = "https://api.envtest.com"
+    process.env.TEST_ALT_INSTANCE = "envtenant"
+    process.env.TEST_ALT_KEY = "envkey456"
+    try {
+      const creds = await AltimateApi.getCredentials()
+      expect(creds.altimateUrl).toBe("https://api.envtest.com")
+      expect(creds.altimateInstanceName).toBe("envtenant")
+      expect(creds.altimateApiKey).toBe("envkey456")
+    } finally {
+      delete process.env.TEST_ALT_URL
+      delete process.env.TEST_ALT_INSTANCE
+      delete process.env.TEST_ALT_KEY
+    }
+  })
+
+  test("resolves ${env:VAR} mixed with literal text", async () => {
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "https://api.myaltimate.com",
+        altimateInstanceName: "${env:TEST_ALT_INSTANCE_MIX}",
+        altimateApiKey: "prefix-${env:TEST_ALT_KEY_MIX}-suffix",
+      }),
+    )
+    process.env.TEST_ALT_INSTANCE_MIX = "mixedtenant"
+    process.env.TEST_ALT_KEY_MIX = "secret"
+    try {
+      const creds = await AltimateApi.getCredentials()
+      expect(creds.altimateInstanceName).toBe("mixedtenant")
+      expect(creds.altimateApiKey).toBe("prefix-secret-suffix")
+    } finally {
+      delete process.env.TEST_ALT_INSTANCE_MIX
+      delete process.env.TEST_ALT_KEY_MIX
+    }
+  })
+
+  test("throws when referenced env var is not set", async () => {
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "https://api.myaltimate.com",
+        altimateInstanceName: "tenant",
+        altimateApiKey: "${env:THIS_VAR_DOES_NOT_EXIST_12345}",
+      }),
+    )
+    delete process.env.THIS_VAR_DOES_NOT_EXIST_12345
+    await expect(AltimateApi.getCredentials()).rejects.toThrow(
+      "Environment variable THIS_VAR_DOES_NOT_EXIST_12345 not found",
+    )
+  })
+
+  test("resolves empty-string env var without throwing", async () => {
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "https://api.myaltimate.com",
+        altimateInstanceName: "${env:TEST_EMPTY_VAR}",
+        altimateApiKey: "key",
+      }),
+    )
+    process.env.TEST_EMPTY_VAR = ""
+    try {
+      const creds = await AltimateApi.getCredentials()
+      expect(creds.altimateInstanceName).toBe("")
+    } finally {
+      delete process.env.TEST_EMPTY_VAR
+    }
+  })
+
+  test("leaves literal values unchanged when no substitution syntax present", async () => {
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "https://api.myaltimate.com",
+        altimateInstanceName: "plaintenant",
+        altimateApiKey: "plain-key-no-substitution",
+      }),
+    )
+    const creds = await AltimateApi.getCredentials()
+    expect(creds.altimateApiKey).toBe("plain-key-no-substitution")
+  })
+
+  test("resolves optional mcpServerUrl field via env var", async () => {
+    const altDir = path.join(testHome, ".altimate")
+    await fsp.mkdir(altDir, { recursive: true })
+    await fsp.writeFile(
+      path.join(altDir, "altimate.json"),
+      JSON.stringify({
+        altimateUrl: "https://api.myaltimate.com",
+        altimateInstanceName: "tenant",
+        altimateApiKey: "key",
+        mcpServerUrl: "${env:TEST_MCP_URL}",
+      }),
+    )
+    process.env.TEST_MCP_URL = "https://custom.mcp.example.com/sse"
+    try {
+      const creds = await AltimateApi.getCredentials()
+      expect(creds.mcpServerUrl).toBe("https://custom.mcp.example.com/sse")
+    } finally {
+      delete process.env.TEST_MCP_URL
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseAltimateKey
+// ---------------------------------------------------------------------------
+
+describe("parseAltimateKey", () => {
+  test("parses valid 3-part input", () => {
+    const r = AltimateApi.parseAltimateKey("https://api.getaltimate.com::mycompany::abc123")
+    expect(r).toEqual({ altimateUrl: "https://api.getaltimate.com", altimateInstanceName: "mycompany", altimateApiKey: "abc123" })
+  })
+
+  test("trims whitespace", () => {
+    const r = AltimateApi.parseAltimateKey("  https://api.getaltimate.com :: mycompany :: abc123  ")
+    expect(r?.altimateUrl).toBe("https://api.getaltimate.com")
+    expect(r?.altimateInstanceName).toBe("mycompany")
+    expect(r?.altimateApiKey).toBe("abc123")
+  })
+
+  test("allows :: in the api key (joins remaining parts)", () => {
+    const r = AltimateApi.parseAltimateKey("https://api.getaltimate.com::mycompany::key::extra")
+    expect(r?.altimateApiKey).toBe("key::extra")
+  })
+
+  test("returns null for too few parts", () => {
+    expect(AltimateApi.parseAltimateKey("https://api.getaltimate.com::mycompany")).toBeNull()
+  })
+
+  test("returns null for empty url", () => {
+    expect(AltimateApi.parseAltimateKey("::mycompany::key")).toBeNull()
+  })
+
+  test("returns null for empty instance", () => {
+    expect(AltimateApi.parseAltimateKey("https://api.getaltimate.com::::key")).toBeNull()
+  })
+
+  test("returns null for non-http url", () => {
+    expect(AltimateApi.parseAltimateKey("ftp://api.getaltimate.com::mycompany::key")).toBeNull()
+  })
+
+  test("returns null for empty string", () => {
+    expect(AltimateApi.parseAltimateKey("")).toBeNull()
+  })
+
+  test("supports http:// for local dev", () => {
+    const r = AltimateApi.parseAltimateKey("http://localhost:8000::dev::localkey")
+    expect(r?.altimateUrl).toBe("http://localhost:8000")
+    expect(r?.altimateInstanceName).toBe("dev")
+    expect(r?.altimateApiKey).toBe("localkey")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// saveCredentials
+// ---------------------------------------------------------------------------
+
+describe("saveCredentials", () => {
+  const testHome = path.join(tmpRoot, "save-test")
+
+  beforeEach(async () => {
+    process.env.OPENCODE_TEST_HOME = testHome
+    await fsp.mkdir(testHome, { recursive: true })
+  })
+
+  afterEach(async () => {
+    delete process.env.OPENCODE_TEST_HOME
+    await fsp.rm(testHome, { recursive: true, force: true }).catch(() => {})
+  })
+
+  test("writes all fields to altimate.json", async () => {
+    await AltimateApi.saveCredentials({
+      altimateUrl: "https://api.save-test.com",
+      altimateInstanceName: "savetenant",
+      altimateApiKey: "savekey",
+    })
+    const written = JSON.parse(await fsp.readFile(AltimateApi.credentialsPath(), "utf-8"))
+    expect(written.altimateUrl).toBe("https://api.save-test.com")
+    expect(written.altimateInstanceName).toBe("savetenant")
+    expect(written.altimateApiKey).toBe("savekey")
+  })
+
+  test("creates parent directory if missing", async () => {
+    const dirPath = path.join(testHome, ".altimate")
+    await fsp.rm(dirPath, { recursive: true, force: true }).catch(() => {})
+    await AltimateApi.saveCredentials({
+      altimateUrl: "https://api.save-test.com",
+      altimateInstanceName: "savetenant",
+      altimateApiKey: "savekey",
+    })
+    expect(await fsp.access(AltimateApi.credentialsPath()).then(() => true).catch(() => false)).toBe(true)
+  })
+
+  test("sets file permissions to 0o600", async () => {
+    await AltimateApi.saveCredentials({
+      altimateUrl: "https://api.save-test.com",
+      altimateInstanceName: "savetenant",
+      altimateApiKey: "savekey",
+    })
+    const stat = await fsp.stat(AltimateApi.credentialsPath())
+    expect(stat.mode & 0o777).toBe(0o600)
+  })
+
+  test("writes optional mcpServerUrl when provided", async () => {
+    await AltimateApi.saveCredentials({
+      altimateUrl: "https://api.save-test.com",
+      altimateInstanceName: "savetenant",
+      altimateApiKey: "savekey",
+      mcpServerUrl: "https://custom.mcp.example.com/sse",
+    })
+    const written = JSON.parse(await fsp.readFile(AltimateApi.credentialsPath(), "utf-8"))
+    expect(written.mcpServerUrl).toBe("https://custom.mcp.example.com/sse")
+  })
+
+  test("omits mcpServerUrl field when not provided", async () => {
+    await AltimateApi.saveCredentials({
+      altimateUrl: "https://api.save-test.com",
+      altimateInstanceName: "savetenant",
+      altimateApiKey: "savekey",
+    })
+    const written = JSON.parse(await fsp.readFile(AltimateApi.credentialsPath(), "utf-8"))
+    expect(written.mcpServerUrl).toBeUndefined()
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// TUI credential round-trip: parseAltimateKey → saveCredentials → getCredentials
+// ---------------------------------------------------------------------------
+
+describe("TUI credential round-trip", () => {
+  const testHome = path.join(tmpRoot, "roundtrip-test")
+
+  beforeEach(async () => {
+    process.env.OPENCODE_TEST_HOME = testHome
+    await fsp.mkdir(testHome, { recursive: true })
+  })
+
+  afterEach(async () => {
+    delete process.env.OPENCODE_TEST_HOME
+    await fsp.rm(testHome, { recursive: true, force: true }).catch(() => {})
+  })
+
+  test("parse → save → getCredentials returns same values", async () => {
+    const parsed = AltimateApi.parseAltimateKey(
+      "https://api.getaltimate.com::megatenant::e7ad942d0e64c873074f762f409989a4",
+    )
+    expect(parsed).not.toBeNull()
+    await AltimateApi.saveCredentials(parsed!)
+    const creds = await AltimateApi.getCredentials()
+    expect(creds.altimateUrl).toBe("https://api.getaltimate.com")
+    expect(creds.altimateInstanceName).toBe("megatenant")
+    expect(creds.altimateApiKey).toBe("e7ad942d0e64c873074f762f409989a4")
+  })
+
+  test("trailing slash in url is stripped through round-trip", async () => {
+    const parsed = AltimateApi.parseAltimateKey("https://api.getaltimate.com/::tenant::key")
+    expect(parsed).not.toBeNull()
+    await AltimateApi.saveCredentials(parsed!)
+    const creds = await AltimateApi.getCredentials()
+    expect(creds.altimateUrl).toBe("https://api.getaltimate.com")
+  })
+
+  test("api key containing :: survives round-trip", async () => {
+    const parsed = AltimateApi.parseAltimateKey("https://api.getaltimate.com::tenant::part1::part2")
+    expect(parsed).not.toBeNull()
+    await AltimateApi.saveCredentials(parsed!)
+    const creds = await AltimateApi.getCredentials()
+    expect(creds.altimateApiKey).toBe("part1::part2")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateCredentials — mirrors AltimateSettingsHelper.validateSettings
+// ---------------------------------------------------------------------------
+
+describe("validateCredentials", () => {
+  const validCreds = {
+    altimateUrl: "https://api.getaltimate.com",
+    altimateInstanceName: "mycompany",
+    altimateApiKey: "abc123",
+  }
+
+  const originalFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  test("returns ok:true on 200 response", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch
+    const result = await AltimateApi.validateCredentials(validCreds)
+    expect(result).toEqual({ ok: true })
+  })
+
+  test("returns ok:false with 'Invalid API key' message on 401", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ detail: "Invalid API key" }), {
+        status: 401,
+        statusText: "Unauthorized",
+      })) as unknown as typeof fetch
+    const result = await AltimateApi.validateCredentials(validCreds)
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("Invalid API key")
+  })
+
+  test("returns ok:false with 'Invalid instance name' message on 403", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ detail: "Invalid instance name" }), {
+        status: 403,
+        statusText: "Forbidden",
+      })) as unknown as typeof fetch
+    const result = await AltimateApi.validateCredentials(validCreds)
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("Invalid instance name")
+  })
+
+  test("returns ok:false with status code on other HTTP errors", async () => {
+    globalThis.fetch = (async () =>
+      new Response("{}", { status: 500, statusText: "Internal Server Error" })) as unknown as typeof fetch
+    const result = await AltimateApi.validateCredentials(validCreds)
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("500")
+  })
+
+  test("returns ok:false when network fetch throws", async () => {
+    globalThis.fetch = (async () => { throw new Error("Network error") }) as unknown as typeof fetch
+    const result = await AltimateApi.validateCredentials(validCreds)
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("Could not reach Altimate API")
+  })
+
+  test("returns ok:false for instance name with uppercase letters", async () => {
+    const result = await AltimateApi.validateCredentials({ ...validCreds, altimateInstanceName: "MyCompany" })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("Invalid instance name")
+  })
+
+  test("returns ok:false for instance name starting with a number", async () => {
+    const result = await AltimateApi.validateCredentials({ ...validCreds, altimateInstanceName: "1company" })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("Invalid instance name")
+  })
+
+  test("returns ok:false for instance name with spaces", async () => {
+    const result = await AltimateApi.validateCredentials({ ...validCreds, altimateInstanceName: "my company" })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; error: string }).error).toContain("Invalid instance name")
+  })
+
+  test("accepts valid instance names with hyphens and underscores", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch
+    for (const name of ["test-instance", "test_instance", "_test", "a", "test123_name-here"]) {
+      const result = await AltimateApi.validateCredentials({ ...validCreds, altimateInstanceName: name })
+      expect(result.ok).toBe(true)
+    }
+  })
+
+  test("calls the correct endpoint URL with correct headers", async () => {
+    let capturedUrl = ""
+    let capturedHeaders: Record<string, string> = {}
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      capturedUrl = String(url)
+      capturedHeaders = Object.fromEntries(new Headers(init?.headers as HeadersInit).entries())
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as unknown as typeof fetch
+    await AltimateApi.validateCredentials(validCreds)
+    expect(capturedUrl).toBe("https://api.getaltimate.com/dbt/v3/validate-credentials")
+    expect(capturedHeaders["x-tenant"]).toBe("mycompany")
+    expect(capturedHeaders["authorization"]).toBe("Bearer abc123")
+  })
+
+  test("strips trailing slash from url before calling endpoint", async () => {
+    let capturedUrl = ""
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      capturedUrl = String(url)
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as unknown as typeof fetch
+    await AltimateApi.validateCredentials({ ...validCreds, altimateUrl: "https://api.getaltimate.com/" })
+    expect(capturedUrl).toBe("https://api.getaltimate.com/dbt/v3/validate-credentials")
+  })
 })
 
 // ---------------------------------------------------------------------------

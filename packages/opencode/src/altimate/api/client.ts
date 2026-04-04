@@ -54,13 +54,103 @@ export namespace AltimateApi {
     return Filesystem.exists(credentialsPath())
   }
 
+  function resolveEnvVars(obj: unknown): unknown {
+    if (typeof obj === "string") {
+      return obj.replace(/\$\{env:([^}]+)\}/g, (_, envVar) => {
+        const value = process.env[envVar]
+        if (value === undefined) throw new Error(`Environment variable ${envVar} not found`)
+        return value
+      })
+    }
+    if (Array.isArray(obj)) return obj.map(resolveEnvVars)
+    if (obj && typeof obj === "object")
+      return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, resolveEnvVars(v)]))
+    return obj
+  }
+
   export async function getCredentials(): Promise<AltimateCredentials> {
     const p = credentialsPath()
     if (!(await Filesystem.exists(p))) {
       throw new Error(`Altimate credentials not found at ${p}`)
     }
-    const raw = JSON.parse(await Filesystem.readText(p))
-    return AltimateCredentials.parse(raw)
+    const raw = resolveEnvVars(JSON.parse(await Filesystem.readText(p)))
+    const creds = AltimateCredentials.parse(raw)
+    return {
+      ...creds,
+      altimateUrl: creds.altimateUrl.replace(/\/+$/, ""),
+    }
+  }
+
+  export function parseAltimateKey(value: string): {
+    altimateUrl: string
+    altimateInstanceName: string
+    altimateApiKey: string
+  } | null {
+    const parts = value.trim().split("::")
+    if (parts.length < 3) return null
+    const url = parts[0].trim()
+    const instance = parts[1].trim()
+    const key = parts.slice(2).join("::").trim()
+    if (!url || !instance || !key) return null
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+    return { altimateUrl: url, altimateInstanceName: instance, altimateApiKey: key }
+  }
+
+  export async function saveCredentials(creds: {
+    altimateUrl: string
+    altimateInstanceName: string
+    altimateApiKey: string
+    mcpServerUrl?: string
+  }): Promise<void> {
+    await Filesystem.writeJson(
+      credentialsPath(),
+      { ...creds, altimateUrl: creds.altimateUrl.replace(/\/+$/, "") },
+      0o600,
+    )
+  }
+
+  const VALID_TENANT_REGEX = /^[a-z_][a-z0-9_-]*$/
+
+  /** Validates credentials against the Altimate API.
+   *  Mirrors AltimateSettingsHelper.validateSettings from altimate-mcp-engine. */
+  export async function validateCredentials(creds: {
+    altimateUrl: string
+    altimateInstanceName: string
+    altimateApiKey: string
+  }): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!VALID_TENANT_REGEX.test(creds.altimateInstanceName)) {
+      return {
+        ok: false,
+        error:
+          "Invalid instance name (must be lowercase letters, numbers, underscores, hyphens, starting with letter or underscore)",
+      }
+    }
+    try {
+      const url = `${creds.altimateUrl.replace(/\/+$/, "")}/dbt/v3/validate-credentials`
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          "x-tenant": creds.altimateInstanceName,
+          Authorization: `Bearer ${creds.altimateApiKey}`,
+          "Content-Type": "application/json",
+        },
+      })
+      if (res.status === 401) {
+        const body = await res.text()
+        return { ok: false, error: `Invalid API key - ${body}` }
+      }
+      if (res.status === 403) {
+        const body = await res.text()
+        return { ok: false, error: `Invalid instance name - ${body}` }
+      }
+      if (!res.ok) {
+        return { ok: false, error: `Connection failed (${res.status} ${res.statusText})` }
+      }
+      return { ok: true }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: `Could not reach Altimate API: ${detail}` }
+    }
   }
 
   async function request(creds: AltimateCredentials, method: string, endpoint: string, body?: unknown) {
