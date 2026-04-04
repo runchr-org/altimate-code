@@ -125,7 +125,9 @@ export const GlobTool = Tool.define("glob", {
       title: path.relative(Instance.worktree, search),
       metadata: {
         count: files.length,
+        // altimate_change start — include timeout in truncated flag
         truncated: truncated || timedOut,
+        // altimate_change end
       },
       output: output.join("\n"),
     }
