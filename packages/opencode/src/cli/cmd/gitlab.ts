@@ -13,6 +13,12 @@ import { SessionPrompt } from "@/session/prompt"
 import { extractResponseText, formatPromptTooLargeError } from "./github"
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const REVIEW_MARKER = "<!-- altimate-code-review -->"
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -50,6 +56,7 @@ interface GitLabNote {
   body: string
   author: { username: string }
   created_at: string
+  system?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -116,9 +123,7 @@ async function gitlabApi<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
-      throw new Error(
-        `GitLab authentication failed (HTTP 401). Verify your token (${maskToken(token)}) has api scope.`,
-      )
+      throw new Error(`GitLab authentication failed (HTTP 401). Verify your token (${maskToken(token)}) has api scope.`)
     }
     if (res.status === 404) {
       throw new Error(`GitLab resource not found (HTTP 404). Check the project path and MR IID.`)
@@ -136,11 +141,7 @@ async function fetchMRMetadata(
   mrIid: number,
   token: string,
 ): Promise<GitLabMRMetadata> {
-  return gitlabApi<GitLabMRMetadata>(
-    instanceUrl,
-    `/projects/${projectId}/merge_requests/${mrIid}`,
-    token,
-  )
+  return gitlabApi<GitLabMRMetadata>(instanceUrl, `/projects/${projectId}/merge_requests/${mrIid}`, token)
 }
 
 async function fetchMRChanges(
@@ -164,7 +165,8 @@ async function fetchMRNotes(
 ): Promise<GitLabNote[]> {
   const all: GitLabNote[] = []
   let page = 1
-  while (true) {
+  const MAX_PAGES = 10 // Safety cap to prevent unbounded API calls
+  while (page <= MAX_PAGES) {
     const batch = await gitlabApi<GitLabNote[]>(
       instanceUrl,
       `/projects/${projectId}/merge_requests/${mrIid}/notes?sort=asc&per_page=100&page=${page}`,
@@ -173,6 +175,9 @@ async function fetchMRNotes(
     all.push(...batch)
     if (batch.length < 100) break
     page += 1
+  }
+  if (page > MAX_PAGES) {
+    console.warn(`Warning: MR has more than ${MAX_PAGES * 100} notes, truncating`)
   }
   return all
 }
@@ -184,12 +189,10 @@ async function postMRNote(
   token: string,
   body: string,
 ): Promise<GitLabNote> {
-  return gitlabApi<GitLabNote>(
-    instanceUrl,
-    `/projects/${projectId}/merge_requests/${mrIid}/notes`,
-    token,
-    { method: "POST", body: { body } },
-  )
+  return gitlabApi<GitLabNote>(instanceUrl, `/projects/${projectId}/merge_requests/${mrIid}/notes`, token, {
+    method: "POST",
+    body: { body },
+  })
 }
 
 async function updateMRNote(
@@ -200,30 +203,37 @@ async function updateMRNote(
   noteId: number,
   body: string,
 ): Promise<GitLabNote> {
-  return gitlabApi<GitLabNote>(
-    instanceUrl,
-    `/projects/${projectId}/merge_requests/${mrIid}/notes/${noteId}`,
-    token,
-    { method: "PUT", body: { body } },
-  )
+  return gitlabApi<GitLabNote>(instanceUrl, `/projects/${projectId}/merge_requests/${mrIid}/notes/${noteId}`, token, {
+    method: "PUT",
+    body: { body },
+  })
 }
 
 // ---------------------------------------------------------------------------
 // Prompt building
 // ---------------------------------------------------------------------------
 
-function buildReviewPrompt(mr: GitLabMRChangesResponse, notes: GitLabNote[]): string {
+function buildReviewPrompt(mr: GitLabMRChangesResponse, notes: GitLabNote[], maxSize: number = 100000): string {
   const changedFiles = mr.changes.map((c) => {
     const status = c.new_file ? "added" : c.deleted_file ? "deleted" : c.renamed_file ? "renamed" : "modified"
     return `- ${c.new_path} (${status})`
   })
 
-  const diffs = mr.changes.map((c) => {
-    return [`--- ${c.old_path}`, `+++ ${c.new_path}`, c.diff].join("\n")
-  })
+  // Build diffs with size limit
+  const diffs: string[] = []
+  let currentSize = 0
+  for (const c of mr.changes) {
+    const diff = [`--- ${c.old_path}`, `+++ ${c.new_path}`, c.diff].join("\n")
+    if (currentSize + diff.length > maxSize) {
+      diffs.push(`\n[Additional ${mr.changes.length - diffs.length} files truncated due to size limit]`)
+      break
+    }
+    diffs.push(diff)
+    currentSize += diff.length
+  }
 
   const noteLines = notes
-    .filter((n) => !n.body.startsWith("<!-- altimate-code-review -->"))
+    .filter((n) => !n.system && !n.body.startsWith(REVIEW_MARKER))
     .map((n) => `- ${n.author.username} at ${n.created_at}: ${n.body}`)
 
   return [
@@ -366,29 +376,34 @@ export const GitlabReviewCommand = cmd({
       })
 
       // Subscribe to session events for live output
-      subscribeSessionEvents(session)
+      const unsubscribe = subscribeSessionEvents(session)
 
-      // subscribeSessionEvents() already renders the completed assistant message,
-      // so we only need the text for posting — no duplicate printing here.
-      const reviewText = await runReview(session.id, variant, providerID, modelID, reviewPrompt)
+      try {
+        // subscribeSessionEvents() already renders the completed assistant message,
+        // so we only need the text for posting — no duplicate printing here.
+        const promptFiles = mrData.changes.map((c) => ({ filename: c.new_path, content: c.diff }))
+        const reviewText = await runReview(session.id, variant, providerID, modelID, reviewPrompt, promptFiles)
 
-      // Post to GitLab (deduplicate: update existing review note if present)
-      if (shouldPost) {
-        const commentBody = `<!-- altimate-code-review -->\n${reviewText}`
-        const existingReview = notes.find((n) => n.body.startsWith("<!-- altimate-code-review -->"))
+        // Post to GitLab (deduplicate: update existing review note if present)
+        if (shouldPost) {
+          const commentBody = `<!-- altimate-code-review -->\n${reviewText}`
+          const existingReview = notes.find((n) => n.body.startsWith(REVIEW_MARKER))
 
-        if (existingReview) {
-          UI.println("Updating existing review note on GitLab MR...")
-          const note = await updateMRNote(instanceUrl, projectId, mrIid, token, existingReview.id, commentBody)
-          UI.println(`Review updated (note #${note.id}): ${mrData.web_url}#note_${note.id}`)
-        } else {
-          UI.println("Posting review to GitLab MR...")
-          const note = await postMRNote(instanceUrl, projectId, mrIid, token, commentBody)
-          UI.println(`Review posted as note #${note.id}: ${mrData.web_url}#note_${note.id}`)
+          if (existingReview) {
+            UI.println("Updating existing review note on GitLab MR...")
+            const note = await updateMRNote(instanceUrl, projectId, mrIid, token, existingReview.id, commentBody)
+            UI.println(`Review updated (note #${note.id}): ${mrData.web_url}#note_${note.id}`)
+          } else {
+            UI.println("Posting review to GitLab MR...")
+            const note = await postMRNote(instanceUrl, projectId, mrIid, token, commentBody)
+            UI.println(`Review posted as note #${note.id}: ${mrData.web_url}#note_${note.id}`)
+          }
         }
-      }
 
-      UI.println("Done.")
+        UI.println("Done.")
+      } finally {
+        unsubscribe?.()
+      }
     })
   },
 })
@@ -403,6 +418,7 @@ async function runReview(
   providerID: ProviderID,
   modelID: ModelID,
   prompt: string,
+  promptFiles: { filename: string; content: string }[] = [],
 ): Promise<string> {
   const result = await SessionPrompt.prompt({
     sessionID,
@@ -422,14 +438,42 @@ async function runReview(
   if (result.info.role === "assistant" && result.info.error) {
     const err = result.info.error
     if (err.name === "ContextOverflowError") {
-      throw new Error(formatPromptTooLargeError([]))
+      throw new Error(formatPromptTooLargeError(promptFiles))
     }
     throw new Error(`${err.name}: ${err.data?.message || ""}`)
   }
 
-  const text = extractResponseText(result.parts)
+  let text = extractResponseText(result.parts)
   if (!text) {
-    throw new Error("No review text returned from the model.")
+    // No text part (tool-only or reasoning-only) - ask agent to summarize
+    UI.println("Requesting summary from agent...")
+    const summary = await SessionPrompt.prompt({
+      sessionID,
+      messageID: MessageID.ascending(),
+      variant,
+      model: { providerID, modelID },
+      tools: { "*": false },
+      parts: [
+        {
+          id: PartID.ascending(),
+          type: "text",
+          text: "Summarize the code review you performed in 1-2 sentences.",
+        },
+      ],
+    })
+
+    if (summary.info.role === "assistant" && summary.info.error) {
+      const err = summary.info.error
+      if (err.name === "ContextOverflowError") {
+        throw new Error(formatPromptTooLargeError(promptFiles))
+      }
+      throw new Error(`${err.name}: ${err.data?.message || ""}`)
+    }
+
+    text = extractResponseText(summary.parts)
+    if (!text) {
+      throw new Error("Failed to get summary from agent")
+    }
   }
   return text
 }
@@ -462,16 +506,15 @@ function subscribeSessionEvents(session: { id: SessionID; title: string; version
   }
 
   let text = ""
-  Bus.subscribe(MessageV2.Event.PartUpdated, async (evt) => {
+  return Bus.subscribe(MessageV2.Event.PartUpdated, async (evt) => {
     if (evt.properties.part.sessionID !== session.id) return
     const part = evt.properties.part
 
     if (part.type === "tool" && part.state.status === "completed") {
       const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
       const title =
-        part.state.title ||
-        (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
-      console.log()
+        part.state.title || (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
+      UI.empty()
       printEvent(color, tool, title)
     }
 
@@ -490,4 +533,6 @@ function subscribeSessionEvents(session: { id: SessionID; title: string; version
 }
 
 // Re-export API helpers for potential use in CI/CD integrations
-export { fetchMRMetadata, fetchMRChanges, fetchMRNotes, postMRNote, updateMRNote }
+export { REVIEW_MARKER, fetchMRMetadata, fetchMRChanges, fetchMRNotes, postMRNote, updateMRNote }
+// Export internal helpers for testing
+export { buildReviewPrompt as _buildReviewPrompt, maskToken as _maskToken, resolveToken as _resolveToken }
