@@ -86,9 +86,16 @@ export namespace ConfigPaths {
 
   /** Apply {env:VAR} and {file:path} substitutions to config text. */
   async function substitute(text: string, input: ParseSource, missing: "error" | "empty" = "error") {
+    // altimate_change start — track interpolation stats for telemetry
+    let legacyBraceRefs = 0
+    let legacyBraceUnresolved = 0
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
-      return process.env[varName] || ""
+      legacyBraceRefs++
+      const v = process.env[varName]
+      if (v === undefined || v === "") legacyBraceUnresolved++
+      return v || ""
     })
+    // altimate_change end
     // altimate_change start — accept ${VAR} shell/dotenv syntax as alias for {env:VAR}
     // Users arriving from Claude Code / VS Code / dotenv / docker-compose expect this
     // convention. Only matches POSIX identifier names to avoid collisions with random
@@ -97,14 +104,44 @@ export namespace ConfigPaths {
     // for fallback values (docker-compose / POSIX shell convention: default used when
     // the variable is unset OR empty). Docker-compose convention: $${VAR} escapes to
     // literal ${VAR}. See issue #635.
+    let dollarRefs = 0
+    let dollarUnresolved = 0
+    let dollarDefaulted = 0
     text = text.replace(/(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_, varName, fallback) => {
+      dollarRefs++
       const envValue = process.env[varName]
-      const value = envValue !== undefined && envValue !== "" ? envValue : (fallback ?? "")
+      const resolved = envValue !== undefined && envValue !== ""
+      if (!resolved && fallback !== undefined) dollarDefaulted++
+      if (!resolved && fallback === undefined) dollarUnresolved++
+      const value = resolved ? envValue : (fallback ?? "")
       return JSON.stringify(value).slice(1, -1)
     })
     // Unescape: $${VAR} → ${VAR} (user-authored literal preservation, docker-compose style)
     // Handles both ${VAR} and ${VAR:-default} forms.
-    text = text.replace(/\$\$(\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\})/g, "$$$1")
+    let dollarEscaped = 0
+    text = text.replace(/\$\$(\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\})/g, (_, rest) => {
+      dollarEscaped++
+      return "$" + rest
+    })
+    // Emit telemetry if any env interpolation happened. Dynamic import avoids a
+    // circular dep with @/altimate/telemetry (which imports @/config/config).
+    if (dollarRefs > 0 || legacyBraceRefs > 0 || dollarEscaped > 0) {
+      import("@/altimate/telemetry")
+        .then(({ Telemetry }) => {
+          Telemetry.track({
+            type: "config_env_interpolation",
+            timestamp: Date.now(),
+            session_id: Telemetry.getContext().sessionId,
+            dollar_refs: dollarRefs,
+            dollar_unresolved: dollarUnresolved,
+            dollar_defaulted: dollarDefaulted,
+            dollar_escaped: dollarEscaped,
+            legacy_brace_refs: legacyBraceRefs,
+            legacy_brace_unresolved: legacyBraceUnresolved,
+          })
+        })
+        .catch(() => {})
+    }
     // altimate_change end
 
     const fileMatches = Array.from(text.matchAll(/\{file:[^}]+\}/g))

@@ -659,6 +659,25 @@ export namespace Telemetry {
         error_message?: string
       }
     // altimate_change end
+    // altimate_change start — config env-var interpolation telemetry
+    | {
+        type: "config_env_interpolation"
+        timestamp: number
+        session_id: string
+        /** ${VAR} / ${VAR:-default} references encountered */
+        dollar_refs: number
+        /** ${VAR} with no value and no default → resolved to empty string (footgun signal) */
+        dollar_unresolved: number
+        /** ${VAR:-default} where default was used */
+        dollar_defaulted: number
+        /** $${VAR} literal escape sequences found */
+        dollar_escaped: number
+        /** legacy {env:VAR} references (raw injection syntax) */
+        legacy_brace_refs: number
+        /** {env:VAR} with no value → empty string */
+        legacy_brace_unresolved: number
+      }
+    // altimate_change end
     // altimate_change start — plan-agent model tool-call refusal detection
     | {
         type: "plan_no_tool_generation"
