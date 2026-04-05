@@ -583,6 +583,149 @@ describe("plan-agent no-tool-generation detection", () => {
       expect(result.event).toBeNull()
     }
   })
+
+  test("event contains all required fields with correct types", () => {
+    const result = simulateFinishStep({
+      ...baseOpts,
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted: false,
+    })
+    const ev = result.event!
+    expect(ev.type).toBe("plan_no_tool_generation")
+    expect(typeof ev.timestamp).toBe("number")
+    expect(typeof ev.session_id).toBe("string")
+    expect(typeof ev.message_id).toBe("string")
+    expect(typeof ev.model_id).toBe("string")
+    expect(typeof ev.provider_id).toBe("string")
+    expect(typeof ev.finish_reason).toBe("string")
+    expect(typeof ev.tokens_output).toBe("number")
+  })
+
+  test("exactly one tool call suppresses the warning (boundary: not only >1)", () => {
+    const result = simulateFinishStep({
+      ...baseOpts,
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 1,
+      planNoToolWarningEmitted: false,
+    })
+    expect(result.event).toBeNull()
+    expect(result.warningEmitted).toBe(false)
+  })
+
+  test("fires with tokens_output=0 (model stopped immediately, produced nothing)", () => {
+    const result = simulateFinishStep({
+      ...baseOpts,
+      sessionID: "sess-plan-zero",
+      messageID: "msg-plan-zero",
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted: false,
+      tokensOutput: 0,
+    })
+    expect(result.event).not.toBeNull()
+    expect(result.event?.tokens_output).toBe(0)
+  })
+
+  test("fires with very large tokens_output (model wrote long text plan, still no tools)", () => {
+    const result = simulateFinishStep({
+      ...baseOpts,
+      sessionID: "sess-plan-verbose",
+      messageID: "msg-plan-verbose",
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted: false,
+      tokensOutput: 9999,
+    })
+    expect(result.event).not.toBeNull()
+    expect(result.event?.tokens_output).toBe(9999)
+  })
+
+  test("session IDs and model metadata are forwarded correctly to the event", () => {
+    const result = simulateFinishStep({
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted: false,
+      sessionID: "custom-session-abc",
+      messageID: "custom-message-xyz",
+      modelID: "gpt-5.4-turbo",
+      providerID: "openai-proxy",
+      tokensOutput: 42,
+    })
+    expect(result.event?.session_id).toBe("custom-session-abc")
+    expect(result.event?.message_id).toBe("custom-message-xyz")
+    expect(result.event?.model_id).toBe("gpt-5.4-turbo")
+    expect(result.event?.provider_id).toBe("openai-proxy")
+    expect(result.event?.tokens_output).toBe(42)
+  })
+
+  test("two-step simulation: tool call in step 1 suppresses warning in step 2", () => {
+    // Simulates a session where step 1 produces a tool call (sessionToolCallsMade goes
+    // from 0->1) and step 2 ends with finish_reason=stop. The warning should NOT fire
+    // because the session has already made a tool call.
+    let sessionToolCallsMade = 0
+    let planNoToolWarningEmitted = false
+
+    // Step 1: a tool call occurs
+    sessionToolCallsMade++
+
+    // Step 2: finish-step fires with stop but no new tool calls
+    const result = simulateFinishStep({
+      ...baseOpts,
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade,
+      planNoToolWarningEmitted,
+    })
+
+    expect(result.event).toBeNull()
+    expect(sessionToolCallsMade).toBe(1)
+  })
+
+  test("warning flag transitions from false to true only on first emission", () => {
+    let planNoToolWarningEmitted = false
+
+    // First emission — should fire and flip the flag
+    const first = simulateFinishStep({
+      ...baseOpts,
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted,
+    })
+    expect(first.event).not.toBeNull()
+    expect(first.warningEmitted).toBe(true)
+
+    // Propagate the new flag state
+    planNoToolWarningEmitted = first.warningEmitted
+
+    // Second call — flag is now true, should be suppressed
+    const second = simulateFinishStep({
+      ...baseOpts,
+      agent: "plan",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted,
+    })
+    expect(second.event).toBeNull()
+    expect(second.warningEmitted).toBe(true)
+  })
+
+  test("empty-string agent is not treated as plan agent", () => {
+    const result = simulateFinishStep({
+      ...baseOpts,
+      agent: "",
+      finishReason: "stop",
+      sessionToolCallsMade: 0,
+      planNoToolWarningEmitted: false,
+    })
+    expect(result.event).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------
