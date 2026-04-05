@@ -221,6 +221,18 @@ export async function detectEnvVars(): Promise<EnvVarConnection[]> {
         database: ["SQLITE_PATH", "SQLITE_DATABASE"],
       },
     },
+    {
+      type: "clickhouse",
+      signals: ["CLICKHOUSE_HOST", "CLICKHOUSE_URL"],
+      configMap: {
+        host: "CLICKHOUSE_HOST",
+        port: "CLICKHOUSE_PORT",
+        database: ["CLICKHOUSE_DB", "CLICKHOUSE_DATABASE"],
+        user: ["CLICKHOUSE_USER", "CLICKHOUSE_USERNAME"],
+        password: "CLICKHOUSE_PASSWORD",
+        connection_string: "CLICKHOUSE_URL",
+      },
+    },
   ]
 
   for (const wh of warehouses) {
@@ -228,10 +240,20 @@ export async function detectEnvVars(): Promise<EnvVarConnection[]> {
     if (!matchedSignal) continue
 
     const sensitiveKeys = new Set([
-      "password", "access_token", "token", "connection_string",
-      "private_key_path", "private_key", "private_key_passphrase",
-      "credentials_json", "keyfile_json", "ssl_key", "ssl_cert", "ssl_ca",
-      "oauth_client_secret", "passcode",
+      "password",
+      "access_token",
+      "token",
+      "connection_string",
+      "private_key_path",
+      "private_key",
+      "private_key_passphrase",
+      "credentials_json",
+      "keyfile_json",
+      "ssl_key",
+      "ssl_cert",
+      "ssl_ca",
+      "oauth_client_secret",
+      "passcode",
     ])
     const config: Record<string, string> = {}
     for (const [key, envNames] of Object.entries(wh.configMap)) {
@@ -271,6 +293,9 @@ export async function detectEnvVars(): Promise<EnvVarConnection[]> {
       oracle: "oracle",
       duckdb: "duckdb",
       databricks: "databricks",
+      clickhouse: "clickhouse",
+      "clickhouse+http": "clickhouse",
+      "clickhouse+https": "clickhouse",
     }
     const dbType = schemeTypeMap[scheme] ?? "postgres"
     // Only add if we don't already have this type detected from other env vars
@@ -447,7 +472,9 @@ export const ProjectScanTool = Tool.define("project_scan", {
       .then((r) => r.warehouses)
       .catch(() => [] as Array<{ name: string; type: string; database?: string }>)
 
-    const dbtProfiles = await Dispatcher.call("dbt.profiles", {})
+    const dbtProfiles = await Dispatcher.call("dbt.profiles", {
+      projectDir: dbtProject.found ? dbtProject.path : undefined,
+    })
       .then((r) => r.connections ?? [])
       .catch(() => [] as Array<{ name: string; type: string; config: Record<string, unknown> }>)
 
@@ -498,7 +525,9 @@ export const ProjectScanTool = Tool.define("project_scan", {
       if (dbtProject.manifestPath) {
         lines.push(`  ✓ manifest.json found`)
         if (dbtManifest) {
-          lines.push(`  Models: ${dbtManifest.model_count}, Sources: ${dbtManifest.source_count}, Tests: ${dbtManifest.test_count}`)
+          lines.push(
+            `  Models: ${dbtManifest.model_count}, Sources: ${dbtManifest.source_count}, Tests: ${dbtManifest.test_count}`,
+          )
         }
       } else {
         lines.push(`  ✗ No manifest.json (run dbt compile or dbt build)`)
@@ -612,12 +641,14 @@ export const ProjectScanTool = Tool.define("project_scan", {
     // Config Files
     lines.push("")
     lines.push("## Config Files")
-    lines.push(configFiles.altimateConfig ? "✓ .opencode/altimate-code.json" : "✗ .opencode/altimate-code.json (not found)")
+    lines.push(
+      configFiles.altimateConfig ? "✓ .opencode/altimate-code.json" : "✗ .opencode/altimate-code.json (not found)",
+    )
     lines.push(configFiles.sqlfluff ? "✓ .sqlfluff" : "✗ .sqlfluff (not found)")
     lines.push(configFiles.preCommit ? "✓ .pre-commit-config.yaml" : "✗ .pre-commit-config.yaml (not found)")
 
     // Emit environment census telemetry
-    const warehouseTypes = [...new Set(existingConnections.map(c => c.type))]
+    const warehouseTypes = [...new Set(existingConnections.map((c) => c.type))]
     const connectionSources: string[] = []
     if (connections.alreadyConfigured.length > 0) connectionSources.push("configured")
     if (connections.newFromDbt.length > 0) connectionSources.push("dbt-profile")
@@ -636,7 +667,9 @@ export const ProjectScanTool = Tool.define("project_scan", {
     if (Flag.OPENCODE_ENABLE_EXA) enabledFlags.push("exa")
     if (Flag.OPENCODE_ENABLE_QUESTION_TOOL) enabledFlags.push("question_tool")
 
-    const skillCount = await Skill.all().then(s => s.length).catch(() => 0)
+    const skillCount = await Skill.all()
+      .then((s) => s.length)
+      .catch(() => 0)
 
     Telemetry.track({
       type: "environment_census",
@@ -649,6 +682,19 @@ export const ProjectScanTool = Tool.define("project_scan", {
       dbt_model_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.model_count) : "0",
       dbt_source_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.source_count) : "0",
       dbt_test_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.test_count) : "0",
+      // altimate_change start — dbt project fingerprint expansion
+      dbt_snapshot_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.snapshot_count ?? 0) : "0",
+      dbt_seed_count_bucket: dbtManifest ? Telemetry.bucketCount(dbtManifest.seed_count ?? 0) : "0",
+      dbt_materialization_dist: dbtManifest
+        ? JSON.stringify(
+            (dbtManifest.models ?? []).reduce((acc: Record<string, number>, m: any) => {
+              const mat = m.materialized ?? "unknown"
+              acc[mat] = (acc[mat] ?? 0) + 1
+              return acc
+            }, {} as Record<string, number>),
+          )
+        : undefined,
+      // altimate_change end
       connection_sources: connectionSources,
       mcp_server_count: mcpServerCount,
       skill_count: skillCount,

@@ -55,13 +55,13 @@ altimate --print-logs --log-level DEBUG
 
 **Solutions:**
 
-1. **If using dbt:** Run `altimate-dbt init` to set up the dbt integration. The CLI will use your `profiles.yml` automatically, so no separate connection config is needed.
+1. **If using dbt:** Run `/discover` — it automatically finds your `profiles.yml` from `DBT_PROFILES_DIR`, your project directory, or `<home>/.dbt/profiles.yml`. If your `profiles.yml` is in a custom location, set `DBT_PROFILES_DIR` to the directory containing it.
 2. **If not using dbt:** Add a connection via the `warehouse_add` tool, `~/.altimate-code/connections.json`, or `ALTIMATE_CODE_CONN_*` env vars.
 3. Test connectivity: use the `warehouse_test` tool with your connection name.
 4. Check that the warehouse hostname and port are reachable
-3. Verify the role/user has the required permissions
-4. For Snowflake: ensure the warehouse is not suspended
-5. For BigQuery: check that the service account has the required IAM roles
+5. Verify the role/user has the required permissions
+6. For Snowflake: ensure the warehouse is not suspended
+7. For BigQuery: check that the service account has the required IAM roles
 
 ### MCP Server Initialization Failures
 

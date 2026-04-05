@@ -5,10 +5,7 @@
  */
 
 import * as Registry from "../connections/registry"
-import type {
-  QueryHistoryParams,
-  QueryHistoryResult,
-} from "../types"
+import type { QueryHistoryParams, QueryHistoryResult } from "../types"
 
 // ---------------------------------------------------------------------------
 // SQL templates
@@ -108,6 +105,31 @@ ORDER BY start_time DESC
 LIMIT ?
 `
 
+const CLICKHOUSE_HISTORY_SQL = `
+SELECT
+    query_id,
+    query as query_text,
+    query_kind as query_type,
+    user as user_name,
+    '' as warehouse_name,
+    '' as warehouse_size,
+    multiIf(exception_code = 0, 'SUCCESS', 'FAILED') as execution_status,
+    toString(exception_code) as error_code,
+    exception as error_message,
+    event_time as start_time,
+    event_time + query_duration_ms / 1000 as end_time,
+    query_duration_ms / 1000.0 as execution_time_sec,
+    read_bytes as bytes_scanned,
+    result_rows as rows_produced,
+    0 as credits_used_cloud_services
+FROM system.query_log
+WHERE type = 'QueryFinish'
+  AND event_date >= today() - __DAYS__
+  AND is_initial_query = 1
+ORDER BY event_time DESC
+LIMIT __LIMIT__
+`
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -119,7 +141,11 @@ function getWhType(warehouse: string): string {
 }
 
 function buildHistoryQuery(
-  whType: string, days: number, limit: number, user?: string, warehouseFilter?: string,
+  whType: string,
+  days: number,
+  limit: number,
+  user?: string,
+  warehouseFilter?: string,
 ): { sql: string; binds: any[] } | null {
   if (whType === "snowflake") {
     const binds: any[] = [-days]
@@ -127,9 +153,7 @@ function buildHistoryQuery(
     const whF = warehouseFilter ? (binds.push(warehouseFilter), "AND warehouse_name = ?") : ""
     binds.push(limit)
     return {
-      sql: SNOWFLAKE_HISTORY_SQL
-        .replace("{user_filter}", userF)
-        .replace("{warehouse_filter}", whF),
+      sql: SNOWFLAKE_HISTORY_SQL.replace("{user_filter}", userF).replace("{warehouse_filter}", whF),
       binds,
     }
   }
@@ -141,6 +165,18 @@ function buildHistoryQuery(
   }
   if (whType === "databricks") {
     return { sql: DATABRICKS_HISTORY_SQL, binds: [days, limit] }
+  }
+  if (whType === "clickhouse") {
+    const clampedDays = Math.max(1, Math.min(Math.floor(Number(days)) || 30, 365))
+    const clampedLimit = Math.max(1, Math.min(Math.floor(Number(limit)) || 100, 10000))
+    // Placeholders use __NAME__ format (not ClickHouse's {name:Type} syntax) to
+    // make clear these are string-substituted with clamped integer values, not
+    // ClickHouse query parameters.
+    const sql = CLICKHOUSE_HISTORY_SQL.replace("__DAYS__", String(clampedDays)).replace(
+      "__LIMIT__",
+      String(clampedLimit),
+    )
+    return { sql, binds: [] }
   }
   if (whType === "duckdb") {
     return null // DuckDB has no native query history
@@ -199,9 +235,7 @@ export async function getQueryHistory(params: QueryHistoryParams): Promise<Query
       total_bytes_scanned: totalBytes,
       total_execution_time_sec: Math.round(totalTime * 100) / 100,
       error_count: errorCount,
-      avg_execution_time_sec: queries.length > 0
-        ? Math.round((totalTime / queries.length) * 100) / 100
-        : 0,
+      avg_execution_time_sec: queries.length > 0 ? Math.round((totalTime / queries.length) * 100) / 100 : 0,
     }
 
     return {
@@ -226,5 +260,6 @@ export const SQL_TEMPLATES = {
   POSTGRES_HISTORY_SQL,
   BIGQUERY_HISTORY_SQL,
   DATABRICKS_HISTORY_SQL,
+  CLICKHOUSE_HISTORY_SQL,
   buildHistoryQuery,
 }

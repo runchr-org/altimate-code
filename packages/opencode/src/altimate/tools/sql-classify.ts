@@ -2,27 +2,69 @@
 //
 // Uses altimate-core's AST-based getStatementTypes() for accurate classification.
 // Handles CTEs, string literals, procedural blocks, all dialects correctly.
+// Falls back to regex-based heuristics if the napi binary fails to load.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const core: any = require("@altimateai/altimate-core")
+// Safe import: napi binary may not be available on all platforms
+let getStatementTypes: ((sql: string, dialect?: string | null) => any) | null = null
+let extractMetadata: ((sql: string) => any) | null = null
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const core = require("@altimateai/altimate-core")
+  if (typeof core?.getStatementTypes === "function") {
+    getStatementTypes = core.getStatementTypes
+  }
+  if (typeof core?.extractMetadata === "function") {
+    extractMetadata = core.extractMetadata
+  }
+} catch {
+  // napi binary failed to load — will use regex fallback
+}
 
-// Categories from altimate-core that indicate write operations
-const WRITE_CATEGORIES = new Set(["dml", "ddl", "dcl", "tcl"])
 // Only SELECT queries are known safe. "other" (SHOW, SET, USE, etc.) is ambiguous — prompt for permission.
 const READ_CATEGORIES = new Set(["query"])
 
 // Hard-deny patterns — blocked regardless of permissions
 const HARD_DENY_TYPES = new Set(["DROP DATABASE", "DROP SCHEMA", "TRUNCATE", "TRUNCATE TABLE"])
 
+// Regex fallback: conservative — only known-safe reads are whitelisted, everything else is "write"
+const READ_PATTERN = /^\s*(SELECT|WITH|SHOW|EXPLAIN|DESCRIBE|DESC)\b/i
+const HARD_DENY_PATTERN =
+  /^\s*(DROP\s+(DATABASE|SCHEMA)\b|TRUNCATE(\s+TABLE)?\b)/i
+
+/**
+ * Regex-based fallback classifier for when altimate-core is unavailable.
+ * Conservative: treats anything not clearly a SELECT/WITH/SHOW/EXPLAIN as "write".
+ * Handles multi-statement SQL by splitting on semicolons and checking each statement.
+ */
+function classifyFallback(sql: string): { queryType: "read" | "write"; blocked: boolean } {
+  const cleaned = sql
+    .replace(/\/\*[\s\S]*?\*\//g, "") // block comments
+    .replace(/--[^\n]*/g, "")          // line comments
+  const statements = cleaned.split(";").map(s => s.trim()).filter(Boolean)
+  if (statements.length === 0) return { queryType: "read", blocked: false }
+  let queryType: "read" | "write" = "read"
+  let blocked = false
+  for (const stmt of statements) {
+    if (HARD_DENY_PATTERN.test(stmt)) blocked = true
+    if (!READ_PATTERN.test(stmt)) queryType = "write"
+  }
+  return { queryType, blocked }
+}
+
 /**
  * Classify a SQL string as "read" or "write" using AST parsing.
  * If ANY statement is a write, returns "write".
  */
 export function classify(sql: string): "read" | "write" {
-  const result = core.getStatementTypes(sql)
-  if (!result?.categories?.length) return "read"
-  // Treat unknown categories (not in WRITE or READ sets) as write to fail safe
-  return result.categories.some((c: string) => !READ_CATEGORIES.has(c)) ? "write" : "read"
+  if (!sql || typeof sql !== "string") return "read"
+  if (!getStatementTypes) return classifyFallback(sql).queryType
+  try {
+    const result = getStatementTypes(sql)
+    if (!result?.categories?.length) return "read"
+    return result.categories.some((c: string) => !READ_CATEGORIES.has(c)) ? "write" : "read"
+  } catch {
+    return classifyFallback(sql).queryType
+  }
 }
 
 /**
@@ -38,15 +80,56 @@ export function classifyMulti(sql: string): "read" | "write" {
  * Returns both the overall query type and whether a hard-deny pattern was found.
  */
 export function classifyAndCheck(sql: string): { queryType: "read" | "write"; blocked: boolean } {
-  const result = core.getStatementTypes(sql)
-  if (!result?.statements?.length) return { queryType: "read", blocked: false }
+  if (!sql || typeof sql !== "string") return { queryType: "read", blocked: false }
+  if (!getStatementTypes) return classifyFallback(sql)
+  try {
+    const result = getStatementTypes(sql)
+    if (!result?.statements?.length) return { queryType: "read", blocked: false }
 
-  const blocked = result.statements.some((s: { statement_type: string }) =>
-    s.statement_type && HARD_DENY_TYPES.has(s.statement_type.toUpperCase()),
-  )
+    const blocked = result.statements.some(
+      (s: { statement_type: string }) =>
+        s.statement_type && HARD_DENY_TYPES.has(s.statement_type.toUpperCase()),
+    )
 
-  const categories = result.categories ?? []
-  // Unknown categories (not in WRITE or READ sets) are treated as write to fail safe
-  const queryType = categories.some((c: string) => !READ_CATEGORIES.has(c)) ? "write" : "read"
-  return { queryType: queryType as "read" | "write", blocked }
+    const categories = result.categories ?? []
+    const queryType = categories.some((c: string) => !READ_CATEGORIES.has(c)) ? "write" : "read"
+    return { queryType: queryType as "read" | "write", blocked }
+  } catch {
+    return classifyFallback(sql)
+  }
 }
+
+// altimate_change start — SQL structure fingerprint for telemetry (no content, only shape)
+export interface SqlFingerprint {
+  statement_types: string[]
+  categories: string[]
+  table_count: number
+  function_count: number
+  has_subqueries: boolean
+  has_aggregation: boolean
+  has_window_functions: boolean
+  node_count: number
+}
+
+/** Compute a PII-safe structural fingerprint of a SQL query.
+ *  Uses altimate-core AST parsing — local, no API calls, ~1-5ms. */
+export function computeSqlFingerprint(sql: string): SqlFingerprint | null {
+  if (!getStatementTypes || !extractMetadata) return null
+  try {
+    const stmtResult = getStatementTypes(sql)
+    const meta = extractMetadata(sql)
+    return {
+      statement_types: stmtResult?.types ?? [],
+      categories: stmtResult?.categories ?? [],
+      table_count: meta?.tables?.length ?? 0,
+      function_count: meta?.functions?.length ?? 0,
+      has_subqueries: meta?.has_subqueries ?? false,
+      has_aggregation: meta?.has_aggregation ?? false,
+      has_window_functions: meta?.has_window_functions ?? false,
+      node_count: meta?.node_count ?? 0,
+    }
+  } catch {
+    return null
+  }
+}
+// altimate_change end

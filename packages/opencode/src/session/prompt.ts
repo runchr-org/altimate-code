@@ -323,8 +323,19 @@ export namespace SessionPrompt {
     // altimate_change start — plan refinement tracking
     let planRevisionCount = 0
     let planHasWritten = false
+    let planLastUserMsgId: string | undefined
     // altimate_change end
     let emergencySessionEndFired = false
+    // altimate_change start — quality signal, tool chain, error fingerprint tracking
+    let lastToolCategory = ""
+    const toolChain: string[] = []
+    let toolErrorCount = 0
+    let errorRecoveryCount = 0
+    let lastToolWasError = false
+    interface ErrorRecord { toolName: string; toolCategory: string; errorClass: string; errorHash: string; recovered: boolean; recoveryTool: string }
+    const errorRecords: ErrorRecord[] = []
+    let pendingError: Omit<ErrorRecord, "recovered" | "recoveryTool"> | null = null
+    // altimate_change end
     const emergencySessionEnd = () => {
       if (emergencySessionEndFired) return
       emergencySessionEndFired = true
@@ -627,10 +638,12 @@ export namespace SessionPrompt {
           const planPath = Session.plan(session)
           planHasWritten = await Filesystem.exists(planPath)
         }
-        // If plan was already written and user sent a new message, this is a refinement
-        if (planHasWritten && step > 1) {
-          // Detect approval phrases in the last user message text
-          const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
+        // If plan was already written and user sent a new message, this is a refinement.
+        // Only count once per user message (not on internal loop iterations).
+        const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
+        const currentUserMsgId = lastUserMsg?.info.id
+        if (planHasWritten && step > 1 && currentUserMsgId && currentUserMsgId !== planLastUserMsgId) {
+          planLastUserMsgId = currentUserMsgId
           const userText = lastUserMsg?.parts
             .filter((p): p is MessageV2.TextPart => p.type === "text" && !("synthetic" in p && p.synthetic))
             .map((p) => p.text.toLowerCase())
@@ -668,7 +681,7 @@ export namespace SessionPrompt {
             const refinementQualifiers = [" but ", " however ", " except ", " change ", " modify ", " update ", " instead ", " although ", " with the following", " with these"]
             const hasRefinementQualifier = refinementQualifiers.some((q) => userText.includes(q))
 
-            const rejectionPhrases = ["don't", "stop", "reject", "not good", "undo", "abort", "start over", "wrong"]
+            const rejectionPhrases = ["don't", "stop", "reject", "not good", "not approve", "not approved", "disapprove", "undo", "abort", "start over", "wrong"]
             // "no" as a standalone word to avoid matching "know", "notion", etc.
             const rejectionWords = ["no"]
             const approvalPhrases = ["looks good", "proceed", "approved", "approve", "lgtm", "go ahead", "ship it", "yes", "perfect"]
@@ -679,7 +692,12 @@ export namespace SessionPrompt {
               return regex.test(userText)
             })
             const isRejection = isRejectionPhrase || isRejectionWord
-            const isApproval = !isRejection && !hasRefinementQualifier && approvalPhrases.some((phrase) => userText.includes(phrase))
+            // Use word-boundary matching for approval phrases to avoid false positives
+            // e.g. "this doesn't look good" should NOT match "looks good"
+            const isApproval = !isRejection && !hasRefinementQualifier && approvalPhrases.some((phrase) => {
+              const regex = new RegExp(`\\b${phrase.replace(/\s+/g, "\\s+")}\\b`, "i")
+              return regex.test(userText)
+            })
             const action = isRejection ? "reject" : isApproval ? "approve" : "refine"
             Telemetry.track({
               type: "plan_revision",
@@ -766,8 +784,35 @@ export namespace SessionPrompt {
           provider_id: model.providerID,
           agent: lastUser.agent,
           project_id: Instance.project?.id ?? "",
+          os: process.platform,
+          arch: process.arch,
+          node_version: process.version,
         })
-        // altimate_change end
+        // altimate_change start — task intent classification (keyword/regex, zero LLM cost)
+        const userMsg = msgs.find((m) => m.info.id === lastUser!.id)
+        if (userMsg) {
+          const userText = userMsg.parts
+            .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
+            .map((p) => p.text)
+            .join("\n")
+          if (userText.length > 0) {
+            const { intent, confidence } = Telemetry.classifyTaskIntent(userText)
+            const fp = Fingerprint.get()
+            const warehouseType = fp?.tags.find((t) =>
+              ["snowflake", "bigquery", "redshift", "databricks", "postgres", "mysql", "sqlite", "duckdb", "trino", "spark", "clickhouse"].includes(t),
+            ) ?? "unknown"
+            Telemetry.track({
+              type: "task_classified",
+              timestamp: Date.now(),
+              session_id: sessionID,
+              intent: intent as any,
+              confidence,
+              warehouse_type: warehouseType,
+            })
+          }
+        }
+        // altimate_change end — task intent classification
+        // altimate_change end — session start telemetry
       }
 
       // Ephemerally wrap queued user messages with a reminder to stay on track
@@ -878,7 +923,46 @@ export namespace SessionPrompt {
       const stepParts = await MessageV2.parts(processor.message.id)
       toolCallCount += stepParts.filter((p) => p.type === "tool").length
       if (processor.message.error) sessionHadError = true
-      // altimate_change end
+      // altimate_change start — quality signal + tool chain + error fingerprints
+      const toolParts = stepParts.filter((p) => p.type === "tool")
+      for (const part of toolParts) {
+        if (part.type !== "tool") continue
+        const toolType = part.tool.startsWith("mcp__") ? "mcp" as const : "standard" as const
+        const toolCategory = Telemetry.categorizeToolName(part.tool, toolType)
+        lastToolCategory = toolCategory
+        if (toolChain.length < 50) toolChain.push(part.tool)
+        const isError = part.state?.status === "error"
+        if (isError) {
+          toolErrorCount++
+          // Flush previous unrecovered error before recording new one
+          if (pendingError) {
+            if (errorRecords.length < 200) errorRecords.push({ ...pendingError, recovered: false, recoveryTool: "" })
+          }
+          lastToolWasError = true
+          const errorMsg = part.state.status === "error" && typeof part.state.error === "string" ? part.state.error : "unknown"
+          const masked = Telemetry.maskString(errorMsg).slice(0, 500)
+          pendingError = {
+            toolName: part.tool,
+            toolCategory,
+            errorClass: Telemetry.classifyError(errorMsg),
+            errorHash: Telemetry.hashError(masked),
+          }
+        } else {
+          if (lastToolWasError && pendingError) {
+            errorRecoveryCount++
+            if (errorRecords.length < 200) errorRecords.push({ ...pendingError, recovered: true, recoveryTool: part.tool })
+            pendingError = null
+          }
+          lastToolWasError = false
+        }
+      }
+      // Flush unrecovered error at end of step
+      if (pendingError && !lastToolWasError) {
+        errorRecords.push({ ...pendingError, recovered: false, recoveryTool: "" })
+        pendingError = null
+      }
+      // altimate_change end — quality signal + tool chain + error fingerprints
+      // altimate_change end — accumulate session metrics
 
       // altimate_change start — detect plan file creation after tool calls
       if (agent.name === "plan" && !planHasWritten) {
@@ -911,6 +995,51 @@ export namespace SessionPrompt {
         : sessionTotalCost === 0 && toolCallCount === 0
           ? "abandoned"
           : "completed"
+    // altimate_change start — emit quality signal, tool chain, and error fingerprint events
+    Telemetry.track({
+      type: "task_outcome_signal",
+      timestamp: Date.now(),
+      session_id: sessionID,
+      signal: Telemetry.deriveQualitySignal(outcome),
+      tool_count: toolCallCount,
+      step_count: step,
+      duration_ms: Date.now() - sessionStartTime,
+      last_tool_category: lastToolCategory || "none",
+    })
+    // Tool chain effectiveness — aggregated tool sequence + outcome
+    if (toolChain.length > 0) {
+      Telemetry.track({
+        type: "tool_chain_outcome",
+        timestamp: Date.now(),
+        session_id: sessionID,
+        chain: JSON.stringify(toolChain),
+        chain_length: toolChain.length,
+        had_errors: toolErrorCount > 0,
+        error_recovery_count: errorRecoveryCount,
+        final_outcome: outcome,
+        total_duration_ms: Date.now() - sessionStartTime,
+        total_cost: sessionTotalCost,
+      })
+    }
+    // Flush any pending unrecovered error
+    if (pendingError) {
+      errorRecords.push({ ...pendingError, recovered: false, recoveryTool: "" })
+    }
+    // Error fingerprints — one event per unique error (capped at 20)
+    for (const err of errorRecords.slice(0, 20)) {
+      Telemetry.track({
+        type: "error_fingerprint",
+        timestamp: Date.now(),
+        session_id: sessionID,
+        error_hash: err.errorHash,
+        error_class: err.errorClass,
+        tool_name: err.toolName,
+        tool_category: err.toolCategory,
+        recovery_successful: err.recovered,
+        recovery_tool: err.recoveryTool,
+      })
+    }
+    // altimate_change end — emit quality signal, tool chain, and error fingerprint events
     Telemetry.track({
       type: "agent_outcome",
       timestamp: Date.now(),

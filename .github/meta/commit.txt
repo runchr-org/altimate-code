@@ -1,17 +1,1 @@
-ci: add Verdaccio sanity suite to CI and release workflows
-
-Adds the Verdaccio-based sanity suite (real `npm install -g` flow)
-to both CI and release pipelines:
-
-**CI (`ci.yml`):**
-- New `sanity-verdaccio` job on push to main
-- Builds linux-x64 binary + dbt-tools, runs full Docker Compose suite
-- Independent of other jobs (doesn't block PRs)
-
-**Release (`release.yml`):**
-- New `sanity-verdaccio` job between build and npm publish
-- Downloads linux-x64 artifact from build matrix
-- **Blocks `publish-npm`** — broken install flow prevents release
-- Dependency chain: build → sanity-verdaccio → publish-npm → github-release
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+feat: add ClickHouse warehouse driver

@@ -838,6 +838,9 @@ export namespace Session {
       const tokens = {
         total,
         input: adjustedInputTokens,
+        // altimate_change start — inputTotal includes cached tokens for accurate telemetry reporting
+        inputTotal: adjustedInputTokens + cacheReadInputTokens + cacheWriteInputTokens,
+        // altimate_change end
         output: outputTokens,
         reasoning: reasoningTokens,
         cache: {

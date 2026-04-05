@@ -34,15 +34,15 @@ export const SchemaInspectTool = Tool.define("schema_inspect", {
       }
       // altimate_change end
       return {
-        title: `Schema: ${result.table}`,
-        metadata: { columnCount: result.columns.length, rowCount: result.row_count },
+        title: `Schema: ${result.table ?? args.table}`,
+        metadata: { columnCount: (result.columns ?? []).length, rowCount: result.row_count },
         output,
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       return {
         title: "Schema: ERROR",
-        metadata: { columnCount: 0, rowCount: undefined },
+        metadata: { columnCount: 0, rowCount: undefined, error: msg },
         output: `Failed to inspect schema: ${msg}\n\nEnsure the dispatcher is running and a warehouse connection is configured.`,
       }
     }
@@ -51,7 +51,8 @@ export const SchemaInspectTool = Tool.define("schema_inspect", {
 
 function formatSchema(result: SchemaInspectResult): string {
   const lines: string[] = []
-  const qualified = result.schema_name ? `${result.schema_name}.${result.table}` : result.table
+  const table = result.table ?? "unknown"
+  const qualified = result.schema_name ? `${result.schema_name}.${table}` : table
   lines.push(`Table: ${qualified}`)
   if (result.row_count !== null && result.row_count !== undefined) {
     lines.push(`Rows: ${result.row_count.toLocaleString()}`)
@@ -59,9 +60,9 @@ function formatSchema(result: SchemaInspectResult): string {
   lines.push("")
   lines.push("Column | Type | Nullable | PK")
   lines.push("-------|------|----------|---")
-  for (const col of result.columns) {
+  for (const col of result.columns ?? []) {
     lines.push(
-      `${col.name} | ${col.data_type} | ${col.nullable ? "YES" : "NO"} | ${col.primary_key ? "YES" : ""}`,
+      `${col.name} | ${col.data_type ?? "unknown"} | ${col.nullable ? "YES" : "NO"} | ${col.primary_key ? "YES" : ""}`,
     )
   }
   return lines.join("\n")

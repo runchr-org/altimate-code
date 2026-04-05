@@ -39,7 +39,7 @@ export const PlanExitTool = Tool.define("plan_exit", {
     })
 
     const answer = answers[0]?.[0]
-    if (answer === "No") throw new Question.RejectedError()
+    if (answer !== "Yes") throw new Question.RejectedError()
 
     const model = await getLastModel(ctx.sessionID)
 
@@ -97,7 +97,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
 
     const answer = answers[0]?.[0]
 
-    if (answer === "No") throw new Question.RejectedError()
+    if (answer !== "Yes") throw new Question.RejectedError()
 
     const model = await getLastModel(ctx.sessionID)
 

@@ -46,6 +46,20 @@ register("schema.index", async (params: SchemaIndexParams): Promise<SchemaIndexR
         duration_ms: Date.now() - startTime,
         result_count: result.tables_indexed,
       })
+      // altimate_change start — schema complexity signal from introspection results
+      Telemetry.track({
+        type: "schema_complexity",
+        timestamp: Date.now(),
+        session_id: Telemetry.getContext().sessionId,
+        warehouse_type: warehouseType,
+        table_count_bucket: Telemetry.bucketCount(result.tables_indexed),
+        column_count_bucket: Telemetry.bucketCount(result.columns_indexed),
+        schema_count_bucket: Telemetry.bucketCount(result.schemas_indexed),
+        avg_columns_per_table: result.tables_indexed > 0
+          ? Math.round(result.columns_indexed / result.tables_indexed)
+          : 0,
+      })
+      // altimate_change end
     } catch {}
     return result
   } catch (e) {

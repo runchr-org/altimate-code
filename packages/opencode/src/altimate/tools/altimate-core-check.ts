@@ -84,7 +84,7 @@ export function formatCheck(data: Record<string, any>): string {
     lines.push("No lint findings.")
   } else {
     for (const f of data.lint?.findings ?? []) {
-      lines.push(`  [${f.severity}] ${f.rule}: ${f.message}`)
+      lines.push(`  [${f.severity ?? "warning"}] ${f.rule ?? "lint"}: ${f.message ?? ""}`)
     }
   }
 
@@ -93,7 +93,7 @@ export function formatCheck(data: Record<string, any>): string {
     lines.push("Safe — no threats.")
   } else {
     for (const t of data.safety?.threats ?? []) {
-      lines.push(`  [${t.severity}] ${t.type}: ${t.description}`)
+      lines.push(`  [${t.severity ?? "warning"}] ${t.type ?? "safety"}: ${t.description ?? ""}`)
     }
   }
 
@@ -102,7 +102,7 @@ export function formatCheck(data: Record<string, any>): string {
     lines.push("No PII detected.")
   } else {
     for (const p of data.pii?.findings ?? []) {
-      lines.push(`  ${p.column}: ${p.category} (${p.confidence} confidence)`)
+      lines.push(`  ${p.column ?? "unknown"}: ${p.category ?? "PII"} (${p.confidence ?? "unknown"} confidence)`)
     }
   }
 

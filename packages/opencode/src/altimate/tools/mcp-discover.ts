@@ -23,9 +23,14 @@ async function getPersistedMcpNames(): Promise<Set<string>> {
 /** Redact server details for safe display — show type and name only, not commands/URLs */
 function safeDetail(server: { type: string } & Record<string, any>): string {
   if (server.type === "remote") return "(remote)"
-  if (server.type === "local" && Array.isArray(server.command) && server.command.length > 0) {
+  if (server.type === "local") {
     // Show only the executable name, not args (which may contain credentials)
-    return `(local: ${server.command[0]})`
+    if (Array.isArray(server.command) && server.command.length > 0) {
+      return `(local: ${server.command[0]})`
+    }
+    if (typeof server.command === "string" && server.command.trim()) {
+      return `(local: ${server.command.trim().split(/\s+/)[0]})`
+    }
   }
   return `(${server.type})`
 }

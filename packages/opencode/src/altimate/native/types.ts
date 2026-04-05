@@ -908,6 +908,8 @@ export interface DbtLineageResult {
 
 export interface DbtProfilesParams {
   path?: string
+  /** dbt project root directory — used to find project-local profiles.yml */
+  projectDir?: string
 }
 
 export interface DbtProfileConnection {

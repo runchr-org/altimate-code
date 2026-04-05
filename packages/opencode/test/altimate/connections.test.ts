@@ -611,6 +611,151 @@ trino_project:
 })
 
 // ---------------------------------------------------------------------------
+// dbt profiles path resolution (DBT_PROFILES_DIR + project-local)
+// ---------------------------------------------------------------------------
+
+describe("dbt profiles path resolution", () => {
+  const PROFILE_CONTENT = `
+myproject:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: test
+      pass: secret
+      dbname: testdb
+      schema: public
+`
+
+  test("finds profiles.yml via DBT_PROFILES_DIR env var", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-envdir-"))
+    fs.writeFileSync(path.join(tmpDir, "profiles.yml"), PROFILE_CONTENT)
+
+    const origEnv = process.env.DBT_PROFILES_DIR
+    process.env.DBT_PROFILES_DIR = tmpDir
+
+    try {
+      const connections = await parseDbtProfiles()
+      expect(connections).toHaveLength(1)
+      expect(connections[0].name).toBe("myproject_dev")
+    } finally {
+      if (origEnv === undefined) delete process.env.DBT_PROFILES_DIR
+      else process.env.DBT_PROFILES_DIR = origEnv
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+
+  test("finds project-local profiles.yml via projectDir", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-projdir-"))
+    fs.writeFileSync(path.join(tmpDir, "profiles.yml"), PROFILE_CONTENT)
+
+    try {
+      const connections = await parseDbtProfiles(undefined, tmpDir)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].name).toBe("myproject_dev")
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
+  })
+
+  test("DBT_PROFILES_DIR takes priority over projectDir", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const envDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-env-pri-"))
+    fs.writeFileSync(
+      path.join(envDir, "profiles.yml"),
+      `
+env_profile:
+  outputs:
+    dev:
+      type: postgres
+      host: env-host
+      dbname: envdb
+      schema: public
+`,
+    )
+
+    const projDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-proj-pri-"))
+    fs.writeFileSync(
+      path.join(projDir, "profiles.yml"),
+      `
+proj_profile:
+  outputs:
+    dev:
+      type: postgres
+      host: proj-host
+      dbname: projdb
+      schema: public
+`,
+    )
+
+    const origEnv = process.env.DBT_PROFILES_DIR
+    process.env.DBT_PROFILES_DIR = envDir
+
+    try {
+      const connections = await parseDbtProfiles(undefined, projDir)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].name).toBe("env_profile_dev")
+      expect(connections[0].config.host).toBe("env-host")
+    } finally {
+      if (origEnv === undefined) delete process.env.DBT_PROFILES_DIR
+      else process.env.DBT_PROFILES_DIR = origEnv
+      fs.rmSync(envDir, { recursive: true })
+      fs.rmSync(projDir, { recursive: true })
+    }
+  })
+
+  test("explicit path takes priority over DBT_PROFILES_DIR", async () => {
+    const fs = await import("fs")
+    const os = await import("os")
+    const path = await import("path")
+
+    const explicitDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-explicit-"))
+    fs.writeFileSync(
+      path.join(explicitDir, "profiles.yml"),
+      `
+explicit_profile:
+  outputs:
+    dev:
+      type: postgres
+      host: explicit-host
+      dbname: explicitdb
+      schema: public
+`,
+    )
+
+    const envDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbt-env-nouse-"))
+    fs.writeFileSync(path.join(envDir, "profiles.yml"), PROFILE_CONTENT)
+
+    const origEnv = process.env.DBT_PROFILES_DIR
+    process.env.DBT_PROFILES_DIR = envDir
+
+    try {
+      const connections = await parseDbtProfiles(path.join(explicitDir, "profiles.yml"), undefined)
+      expect(connections).toHaveLength(1)
+      expect(connections[0].name).toBe("explicit_profile_dev")
+    } finally {
+      if (origEnv === undefined) delete process.env.DBT_PROFILES_DIR
+      else process.env.DBT_PROFILES_DIR = origEnv
+      fs.rmSync(explicitDir, { recursive: true })
+      fs.rmSync(envDir, { recursive: true })
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // dbtConnectionsToConfigs
 // ---------------------------------------------------------------------------
 

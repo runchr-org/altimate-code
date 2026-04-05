@@ -281,7 +281,8 @@ if ! command -v node >/dev/null 2>&1; then
   skip_test "NAPI module exports" "node not available"
 else
   NAPI_ROOT=$(npm root -g 2>/dev/null || echo "")
-  NAPI_CHECK=$(NODE_PATH="$NAPI_ROOT:$HOME/.npm-global/lib/node_modules" node -e "
+  NAPI_AC_NM="$NAPI_ROOT/altimate-code/node_modules"
+  NAPI_CHECK=$(NODE_PATH="$NAPI_ROOT:$NAPI_AC_NM" node -e "
     try {
       const m = require('@altimateai/altimate-core');
       // Verify it exports something (not just an empty module)

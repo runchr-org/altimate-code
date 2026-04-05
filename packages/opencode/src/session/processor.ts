@@ -22,6 +22,11 @@ import { Telemetry } from "@/altimate/telemetry"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
+  // altimate_change start — per-tool repeat threshold to catch varied-input loops (e.g. todowrite 2,080x)
+  // Legitimate tool use rarely exceeds 20-25 calls per tool per session.
+  // 30 catches pathological patterns while avoiding false positives for power users.
+  const TOOL_REPEAT_THRESHOLD = 30
+  // altimate_change end
   const log = Log.create({ service: "session.processor" })
 
   export type Info = Awaited<ReturnType<typeof create>>
@@ -34,6 +39,9 @@ export namespace SessionProcessor {
     abort: AbortSignal
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    // altimate_change start — per-tool call counter for varied-input loop detection
+    const toolCallCounts: Record<string, number> = {}
+    // altimate_change end
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
@@ -181,6 +189,37 @@ export namespace SessionProcessor {
                         ruleset: agent.permission,
                       })
                     }
+
+                    // altimate_change start — per-tool repeat counter (catches varied-input loops like todowrite 2,080x)
+                    // Counter is scoped to the processor lifetime (create() call), so it accumulates
+                    // across multiple process() invocations within a session. This is intentional:
+                    // cross-turn accumulation catches slow-burn loops that stay under the threshold
+                    // per-turn but add up over the session.
+                    toolCallCounts[value.toolName] = (toolCallCounts[value.toolName] ?? 0) + 1
+                    if (toolCallCounts[value.toolName] >= TOOL_REPEAT_THRESHOLD) {
+                      Telemetry.track({
+                        type: "doom_loop_detected",
+                        timestamp: Date.now(),
+                        session_id: input.sessionID,
+                        tool_name: value.toolName,
+                        repeat_count: toolCallCounts[value.toolName],
+                      })
+                      const agent = await Agent.get(input.assistantMessage.agent)
+                      await PermissionNext.ask({
+                        permission: "doom_loop",
+                        patterns: [value.toolName],
+                        sessionID: input.assistantMessage.sessionID,
+                        metadata: {
+                          tool: value.toolName,
+                          input: value.input,
+                          repeat_count: toolCallCounts[value.toolName],
+                        },
+                        always: [value.toolName],
+                        ruleset: agent.permission,
+                      })
+                      toolCallCounts[value.toolName] = 0
+                    }
+                    // altimate_change end
                   }
                   break
                 }
@@ -275,6 +314,9 @@ export namespace SessionProcessor {
                     duration_ms: Date.now() - stepStartTime,
                     tokens_input: usage.tokens.input,
                     tokens_output: usage.tokens.output,
+                    // altimate_change start — include total input tokens (with cache) when they differ from tokens_input
+                    ...(usage.tokens.inputTotal !== usage.tokens.input && { tokens_input_total: usage.tokens.inputTotal }),
+                    // altimate_change end
                     ...(value.usage.reasoningTokens !== undefined && { tokens_reasoning: usage.tokens.reasoning }),
                     ...(value.usage.cachedInputTokens !== undefined && { tokens_cache_read: usage.tokens.cache.read }),
                     ...(usage.tokens.cache.write > 0 && { tokens_cache_write: usage.tokens.cache.write }),

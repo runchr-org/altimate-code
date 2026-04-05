@@ -13,6 +13,9 @@ import { DialogModel } from "./dialog-model"
 import { useKeyboard } from "@opentui/solid"
 import { Clipboard } from "@tui/util/clipboard"
 import { useToast } from "../ui/toast"
+// altimate_change start — import AltimateApi for direct credential file write
+import { AltimateApi } from "../../../../altimate/api/client"
+// altimate_change end
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -210,6 +213,9 @@ function ApiMethod(props: ApiMethodProps) {
   const sdk = useSDK()
   const sync = useSync()
   const { theme } = useTheme()
+  // altimate_change start — altimate-backend: validation error signal
+  const [validationError, setValidationError] = createSignal<string | null>(null)
+  // altimate_change end
 
   return (
     <DialogPrompt
@@ -239,10 +245,51 @@ function ApiMethod(props: ApiMethodProps) {
               </text>
             </box>
           ),
+          // altimate_change start — altimate-backend credential format description
+          "altimate-backend": (
+            <box gap={1}>
+              <text fg={theme.textMuted}>
+                Enter your Altimate credentials in this format:
+              </text>
+              <text fg={theme.text}>
+                instance-url::instance-name::api-key
+              </text>
+              <text fg={theme.textMuted}>
+                e.g. https://api.getaltimate.com::mycompany::abc123
+              </text>
+              <Show when={validationError()}>
+                <text fg={theme.error}>{validationError()!}</text>
+              </Show>
+            </box>
+          ),
+          // altimate_change end
         }[props.providerID] ?? undefined
       }
       onConfirm={async (value) => {
         if (!value) return
+        // altimate_change start — altimate-backend: validate then write credentials file directly
+        if (props.providerID === "altimate-backend") {
+          const parsed = AltimateApi.parseAltimateKey(value)
+          if (!parsed) {
+            setValidationError("Invalid format — use: instance-url::instance-name::api-key")
+            return
+          }
+          const validation = await AltimateApi.validateCredentials(parsed)
+          if (!validation.ok) {
+            setValidationError(validation.error)
+            return
+          }
+          try {
+            await AltimateApi.saveCredentials(parsed)
+            await sdk.client.instance.dispose()
+            await sync.bootstrap()
+            dialog.replace(() => <DialogModel providerID={props.providerID} />)
+          } catch (err) {
+            setValidationError(err instanceof Error ? err.message : "Failed to save credentials")
+          }
+          return
+        }
+        // altimate_change end
         await sdk.client.auth.set({
           providerID: props.providerID,
           auth: {

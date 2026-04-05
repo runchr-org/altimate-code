@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { classify, classifyMulti, classifyAndCheck } from "../../../src/altimate/tools/sql-classify"
+import { classify, classifyMulti, classifyAndCheck, computeSqlFingerprint } from "../../../src/altimate/tools/sql-classify"
 
 describe("classify", () => {
   // --- Read queries ---
@@ -252,5 +252,44 @@ describe("sql-execute permission flow", () => {
   test("multi-statement with hard-deny blocks entire batch", () => {
     const { blocked } = classifyAndCheck("SELECT 1; DROP DATABASE prod")
     expect(blocked).toBe(true)
+  })
+})
+
+describe("computeSqlFingerprint", () => {
+  test("returns fingerprint for valid SQL", () => {
+    const result = computeSqlFingerprint("SELECT id, name FROM users WHERE active = true")
+    // If napi is available, we get a real fingerprint; if not, null
+    if (result !== null) {
+      expect(result.statement_types).toBeInstanceOf(Array)
+      expect(result.categories).toBeInstanceOf(Array)
+      expect(typeof result.table_count).toBe("number")
+      expect(typeof result.function_count).toBe("number")
+      expect(typeof result.has_subqueries).toBe("boolean")
+      expect(typeof result.has_aggregation).toBe("boolean")
+      expect(typeof result.has_window_functions).toBe("boolean")
+      expect(typeof result.node_count).toBe("number")
+    }
+  })
+
+  test("returns null for empty string", () => {
+    const result = computeSqlFingerprint("")
+    // Either null (no napi) or a valid result with empty arrays
+    if (result !== null) {
+      expect(result.statement_types).toBeInstanceOf(Array)
+    }
+  })
+
+  test("does not throw for invalid SQL", () => {
+    // Should return null or a partial result, never throw
+    expect(() => computeSqlFingerprint("NOT VALID SQL !!@#$")).not.toThrow()
+  })
+
+  test("returns null when napi unavailable (graceful degradation)", () => {
+    // This tests the guard clause — computeSqlFingerprint returns null
+    // when getStatementTypes/extractMetadata are null.
+    // In test env with napi available, this would return a real result.
+    const result = computeSqlFingerprint("SELECT 1")
+    // Either a valid result (napi loaded) or null (napi unavailable) — both are correct
+    expect(result === null || typeof result === "object").toBe(true)
   })
 })

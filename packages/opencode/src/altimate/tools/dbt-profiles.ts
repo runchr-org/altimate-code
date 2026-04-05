@@ -1,18 +1,24 @@
 import z from "zod"
+import { homedir } from "os"
+import { join } from "path"
 import { Tool } from "../../tool/tool"
 import { Dispatcher } from "../native"
 import { isSensitiveField } from "../native/connections/credential-store"
 
+const DEFAULT_DBT_PROFILES = join(homedir(), ".dbt", "profiles.yml")
+
 export const DbtProfilesTool = Tool.define("dbt_profiles", {
   description:
-    "Discover dbt profiles from profiles.yml and map them to warehouse connections. Auto-detects Snowflake, BigQuery, Databricks, Postgres, Redshift, MySQL, DuckDB configurations.",
+    `Discover dbt profiles from profiles.yml and map them to warehouse connections. Auto-detects Snowflake, BigQuery, Databricks, Postgres, Redshift, MySQL, DuckDB configurations. Searches: explicit path > DBT_PROFILES_DIR env var > project-local profiles.yml > ${DEFAULT_DBT_PROFILES}.`,
   parameters: z.object({
-    path: z.string().optional().describe("Path to profiles.yml (defaults to ~/.dbt/profiles.yml)"),
+    path: z.string().optional().describe(`Explicit path to profiles.yml. If omitted, checks DBT_PROFILES_DIR, then project directory, then ${DEFAULT_DBT_PROFILES}`),
+    projectDir: z.string().optional().describe("dbt project root directory. Used to find project-local profiles.yml next to dbt_project.yml"),
   }),
   async execute(args, ctx) {
     try {
       const result = await Dispatcher.call("dbt.profiles", {
         path: args.path,
+        projectDir: args.projectDir,
       })
 
       if (!result.success) {
@@ -28,7 +34,7 @@ export const DbtProfilesTool = Tool.define("dbt_profiles", {
         return {
           title: "dbt Profiles: No connections found",
           metadata: { success: true, connection_count: 0 },
-          output: "No dbt profiles found. Ensure ~/.dbt/profiles.yml exists with valid configurations.",
+          output: `No dbt profiles found. Ensure profiles.yml exists in your project directory, DBT_PROFILES_DIR, or ${DEFAULT_DBT_PROFILES}.`,
         }
       }
 

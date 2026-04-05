@@ -25,6 +25,7 @@ const ADAPTER_TYPE_MAP: Record<string, string> = {
   sqlite: "sqlite",
   spark: "databricks",
   trino: "postgres", // wire-compatible
+  clickhouse: "clickhouse",
 }
 
 /** Map dbt config keys to altimate config keys. */
@@ -76,10 +77,7 @@ function resolveEnvVarsDeep(obj: Record<string, unknown>): Record<string, unknow
 }
 
 /** Convert a dbt output config to an altimate ConnectionConfig. */
-function mapConfig(
-  dbtType: string,
-  dbtConfig: Record<string, unknown>,
-): ConnectionConfig {
+function mapConfig(dbtType: string, dbtConfig: Record<string, unknown>): ConnectionConfig {
   const type = ADAPTER_TYPE_MAP[dbtType] ?? dbtType
   const config: ConnectionConfig = { type }
 
@@ -98,15 +96,40 @@ function mapConfig(
 }
 
 /**
+ * Resolve the profiles.yml path using dbt's standard priority order:
+ * 1. Explicit path (if provided)
+ * 2. DBT_PROFILES_DIR environment variable
+ * 3. Project-local profiles.yml (in dbt project root)
+ * 4. ~/.dbt/profiles.yml (default)
+ */
+function resolveProfilesPath(explicitPath?: string, projectDir?: string): string {
+  if (explicitPath) return explicitPath
+
+  const envDir = process.env.DBT_PROFILES_DIR
+  if (envDir) {
+    const envPath = path.join(envDir, "profiles.yml")
+    if (fs.existsSync(envPath)) return envPath
+    // Warn when DBT_PROFILES_DIR is set but profiles.yml not found there —
+    // dbt CLI would error here, we fall through for graceful discovery
+    console.warn(`[dbt-profiles] DBT_PROFILES_DIR is set to "${envDir}" but no profiles.yml found there, falling through`)
+  }
+
+  if (projectDir) {
+    const projectPath = path.join(projectDir, "profiles.yml")
+    if (fs.existsSync(projectPath)) return projectPath
+  }
+
+  return path.join(os.homedir(), ".dbt", "profiles.yml")
+}
+
+/**
  * Parse dbt profiles.yml and return discovered connections.
  *
- * @param profilesPath - Path to profiles.yml. Defaults to ~/.dbt/profiles.yml
+ * @param profilesPath - Explicit path to profiles.yml
+ * @param projectDir - dbt project root directory (for project-local profiles.yml)
  */
-export async function parseDbtProfiles(
-  profilesPath?: string,
-): Promise<DbtProfileConnection[]> {
-  const resolvedPath =
-    profilesPath ?? path.join(os.homedir(), ".dbt", "profiles.yml")
+export async function parseDbtProfiles(profilesPath?: string, projectDir?: string): Promise<DbtProfileConnection[]> {
+  const resolvedPath = resolveProfilesPath(profilesPath, projectDir)
 
   if (!fs.existsSync(resolvedPath)) {
     return []
@@ -150,9 +173,7 @@ export async function parseDbtProfiles(
     const outputs = (profile as Record<string, any>).outputs
     if (!outputs || typeof outputs !== "object") continue
 
-    for (const [outputName, output] of Object.entries(
-      outputs as Record<string, any>,
-    )) {
+    for (const [outputName, output] of Object.entries(outputs as Record<string, any>)) {
       if (!output || typeof output !== "object") continue
       const rawConfig = resolveEnvVarsDeep(output as Record<string, unknown>)
       const dbtType = (rawConfig.type as string) ?? "unknown"
@@ -172,9 +193,7 @@ export async function parseDbtProfiles(
 /**
  * Convert DbtProfileConnection array to a map of ConnectionConfigs.
  */
-export function dbtConnectionsToConfigs(
-  connections: DbtProfileConnection[],
-): Record<string, ConnectionConfig> {
+export function dbtConnectionsToConfigs(connections: DbtProfileConnection[]): Record<string, ConnectionConfig> {
   const result: Record<string, ConnectionConfig> = {}
   for (const conn of connections) {
     result[conn.name] = conn.config as ConnectionConfig

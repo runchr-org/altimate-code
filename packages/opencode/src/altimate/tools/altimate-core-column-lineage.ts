@@ -57,7 +57,7 @@ function formatColumnLineage(data: Record<string, any>): string {
     lines.push("Lineage Edges:")
     for (const edge of data.column_lineage) {
       const transform = edge.lens_type ?? edge.transform_type ?? edge.transform ?? ""
-      lines.push(`  ${edge.source} → ${edge.target}${transform ? ` (${transform})` : ""}`)
+      lines.push(`  ${edge.source ?? "?"} → ${edge.target ?? "?"}${transform ? ` (${transform})` : ""}`)
     }
   }
 

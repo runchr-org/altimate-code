@@ -2,15 +2,15 @@ import z from "zod"
 import { Tool } from "../../tool/tool"
 import { Dispatcher } from "../native"
 import type { SqlExecuteResult } from "../native/types"
-// altimate_change start - SQL write access control
-import { classifyAndCheck } from "./sql-classify"
+// altimate_change start - SQL write access control + fingerprinting
+import { classifyAndCheck, computeSqlFingerprint } from "./sql-classify"
+import { Telemetry } from "../telemetry"
 // altimate_change end
 // altimate_change start — progressive disclosure suggestions
 import { PostConnectSuggestions } from "./post-connect-suggestions"
 // altimate_change end
 // altimate_change start — pre-execution SQL validation via cached schema
 import { getCache } from "../native/schema/cache"
-import { Telemetry } from "../../telemetry"
 // altimate_change end
 
 export const SqlExecuteTool = Tool.define("sql_execute", {
@@ -56,6 +56,28 @@ export const SqlExecuteTool = Tool.define("sql_execute", {
       })
 
       let output = formatResult(result)
+      // altimate_change start — emit SQL structure fingerprint telemetry
+      try {
+        const fp = computeSqlFingerprint(args.query)
+        if (fp) {
+          Telemetry.track({
+            type: "sql_fingerprint",
+            timestamp: Date.now(),
+            session_id: ctx.sessionID,
+            statement_types: JSON.stringify(fp.statement_types),
+            categories: JSON.stringify(fp.categories),
+            table_count: fp.table_count,
+            function_count: fp.function_count,
+            has_subqueries: fp.has_subqueries,
+            has_aggregation: fp.has_aggregation,
+            has_window_functions: fp.has_window_functions,
+            node_count: fp.node_count,
+          })
+        }
+      } catch {
+        // Fingerprinting must never break query execution
+      }
+      // altimate_change end
       // altimate_change start — progressive disclosure suggestions
       const suggestion = PostConnectSuggestions.getProgressiveSuggestion("sql_execute")
       if (suggestion) {

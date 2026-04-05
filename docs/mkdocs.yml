@@ -112,6 +112,7 @@ nav:
           - Migration: data-engineering/guides/migration.md
           - Using with Claude Code: data-engineering/guides/using-with-claude-code.md
           - Using with Codex: data-engineering/guides/using-with-codex.md
+          - ClickHouse: data-engineering/guides/clickhouse.md
   - Configure:
       - Overview: configure/index.md
       - Warehouses: configure/warehouses.md

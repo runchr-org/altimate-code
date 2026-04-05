@@ -46,6 +46,7 @@ jobs:
               - 'packages/opencode/test/altimate/drivers-e2e.test.ts'
               - 'packages/opencode/test/altimate/drivers-docker-e2e.test.ts'
               - 'packages/opencode/test/altimate/drivers-mongodb-e2e.test.ts'
+              - 'packages/opencode/test/altimate/drivers-clickhouse-e2e.test.ts'
               - 'packages/opencode/test/altimate/connections.test.ts'
             dbt-tools:
               - 'packages/dbt-tools/**'
@@ -198,6 +199,19 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      clickhouse:
+        image: clickhouse/clickhouse-server:latest
+        env:
+          CLICKHOUSE_DB: testdb
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+        ports:
+          - 18123:8123
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -244,6 +258,13 @@ jobs:
         env:
           TEST_MONGODB_HOST: 127.0.0.1
           TEST_MONGODB_PORT: "27017"
+
+      - name: Run ClickHouse driver E2E
+        run: bun test test/altimate/drivers-clickhouse-e2e.test.ts
+        working-directory: packages/opencode
+        env:
+          TEST_CLICKHOUSE_HOST: 127.0.0.1
+          TEST_CLICKHOUSE_PORT: "18123"
 
       # Cloud tests NOT included — they require real credentials
       # Run locally with:

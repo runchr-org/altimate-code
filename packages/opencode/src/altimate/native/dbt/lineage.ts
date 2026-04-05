@@ -6,10 +6,7 @@
 
 import * as fs from "fs"
 import * as core from "@altimateai/altimate-core"
-import type {
-  DbtLineageParams,
-  DbtLineageResult,
-} from "../types"
+import type { DbtLineageParams, DbtLineageResult } from "../types"
 
 /**
  * Compute column-level lineage for a dbt model.
@@ -65,9 +62,7 @@ export function dbtLineage(params: DbtLineageParams): DbtLineageResult {
   // Delegate to altimate-core column_lineage
   let rawLineage: Record<string, unknown>
   try {
-    const schema = schemaContext
-      ? core.Schema.fromJson(JSON.stringify(schemaContext))
-      : undefined
+    const schema = schemaContext ? core.Schema.fromJson(JSON.stringify(schemaContext)) : undefined
     const result = core.columnLineage(sql, dialect, schema)
     rawLineage = JSON.parse(JSON.stringify(result))
   } catch (e) {
@@ -113,6 +108,7 @@ function detectDialect(manifest: any, modelNode: any): string {
       postgres: "postgres",
       redshift: "redshift",
       duckdb: "duckdb",
+      clickhouse: "clickhouse",
     }
     return dialectMap[adapter] || adapter
   }

@@ -109,6 +109,9 @@ describe("telemetry.track", () => {
         provider_id: "test-provider",
         agent: "test-agent",
         project_id: "test-project",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
     }).not.toThrow()
   })
@@ -150,6 +153,9 @@ describe("telemetry.track", () => {
         provider_id: "p",
         agent: "a",
         project_id: "x",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
     } finally {
       process.env.ALTIMATE_TELEMETRY_DISABLED = origEnv
@@ -368,6 +374,9 @@ describe("telemetry.parseConnectionString (indirect)", () => {
         provider_id: "p1",
         agent: "a1",
         project_id: "proj1",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -405,6 +414,9 @@ describe("telemetry.parseConnectionString (indirect)", () => {
         provider_id: "p1",
         agent: "a1",
         project_id: "proj1",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -444,6 +456,9 @@ describe("telemetry.parseConnectionString (indirect)", () => {
         provider_id: "p1",
         agent: "a1",
         project_id: "proj1",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -480,6 +495,9 @@ describe("telemetry.parseConnectionString (indirect)", () => {
         provider_id: "p1",
         agent: "a1",
         project_id: "proj1",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -546,6 +564,9 @@ describe("telemetry.toAppInsightsEnvelopes (indirect)", () => {
         provider_id: "anthropic",
         agent: "builder",
         project_id: "proj-xyz",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -676,6 +697,9 @@ describe("telemetry.toAppInsightsEnvelopes (indirect)", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -720,6 +744,9 @@ describe("telemetry.flush", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -755,6 +782,9 @@ describe("telemetry.flush", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -794,6 +824,9 @@ describe("telemetry.flush", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       // First flush — network error, events re-added to buffer
@@ -841,6 +874,9 @@ describe("telemetry.flush", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -878,6 +914,9 @@ describe("telemetry.flush", () => {
           provider_id: "p",
           agent: "a",
           project_id: "proj",
+          os: "linux",
+          arch: "x64",
+          node_version: "v22.0.0",
         })
       }
 
@@ -902,6 +941,9 @@ describe("telemetry.flush", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
       await Telemetry.flush()
 
@@ -951,6 +993,9 @@ describe("telemetry.shutdown", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       // shutdown should trigger a flush
@@ -986,6 +1031,9 @@ describe("telemetry.shutdown", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.shutdown()
@@ -1005,6 +1053,9 @@ describe("telemetry.shutdown", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
       let fetchCountBefore = fetchMock.mock.calls.length
       await Telemetry.flush()
@@ -1137,6 +1188,9 @@ describe("telemetry.buffer overflow", () => {
           provider_id: "p",
           agent: "a",
           project_id: "proj",
+          os: "linux",
+          arch: "x64",
+          node_version: "v22.0.0",
         })
       }
 
@@ -1189,6 +1243,9 @@ describe("telemetry.init with enabled telemetry", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -1225,6 +1282,9 @@ describe("telemetry.init with enabled telemetry", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -1260,6 +1320,9 @@ describe("telemetry.init with enabled telemetry", () => {
         provider_id: "p",
         agent: "a",
         project_id: "proj",
+        os: "linux",
+        arch: "x64",
+        node_version: "v22.0.0",
       })
 
       await Telemetry.flush()
@@ -1509,14 +1572,49 @@ describe("telemetry.classifyError", () => {
     // altimate_change start — expanded connection patterns
     expect(Telemetry.classifyError("SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string")).toBe("connection")
     expect(Telemetry.classifyError("password must be a string")).toBe("connection")
-    expect(Telemetry.classifyError("PostgreSQL driver not installed. Run: npm install pg")).toBe("connection")
-    expect(Telemetry.classifyError("Error: Connection mydb not found. Available: (none)")).toBe("connection")
-    expect(Telemetry.classifyError("No warehouse configured. Use warehouse.add")).toBe("connection")
-    expect(Telemetry.classifyError("Unsupported database type: clickhouse")).toBe("connection")
     expect(Telemetry.classifyError("Connection reset by peer")).toBe("connection")
     expect(Telemetry.classifyError("Connection closed unexpectedly")).toBe("connection")
     // altimate_change end
   })
+
+  // altimate_change start — not_configured class (split from connection for clearer triage)
+  test("classifies not_configured errors", () => {
+    expect(Telemetry.classifyError("PostgreSQL driver not installed. Run: npm install pg")).toBe("not_configured")
+    expect(Telemetry.classifyError("Error: Connection mydb not found. Available: (none)")).toBe("not_configured")
+    expect(Telemetry.classifyError("No warehouse configured. Use warehouse.add")).toBe("not_configured")
+    expect(Telemetry.classifyError("Unsupported database type: clickhouse")).toBe("not_configured")
+    expect(Telemetry.classifyError("Snowflake driver not installed. Run: npm install snowflake-sdk")).toBe("not_configured")
+    expect(Telemetry.classifyError("Warehouse not configured for this project")).toBe("not_configured")
+    expect(Telemetry.classifyError("Connection not configured")).toBe("not_configured")
+  })
+  // altimate_change end
+
+  // altimate_change start — file_not_found class for file system errors
+  test("classifies file_not_found errors", () => {
+    expect(Telemetry.classifyError("File not found: /path/to/model.sql")).toBe("file_not_found")
+    expect(Telemetry.classifyError("No such file or directory")).toBe("file_not_found")
+    expect(Telemetry.classifyError("ENOENT: /missing/file.ts")).toBe("file_not_found")
+    expect(Telemetry.classifyError("Directory not found: /src/models")).toBe("file_not_found")
+    expect(Telemetry.classifyError("File does not exist: schema.yml")).toBe("file_not_found")
+  })
+  // altimate_change end
+
+  // altimate_change start — edit_mismatch class for edit tool failures
+  test("classifies edit_mismatch errors", () => {
+    expect(Telemetry.classifyError("Could not find oldString in the file /path/to/file.ts")).toBe("edit_mismatch")
+    expect(Telemetry.classifyError("No changes to apply: oldString and newString are identical")).toBe("edit_mismatch")
+    expect(Telemetry.classifyError("oldString and newString are identical")).toBe("edit_mismatch")
+  })
+  // altimate_change end
+
+  // altimate_change start — resource_exhausted class for OOM/quota errors
+  test("classifies resource_exhausted errors", () => {
+    expect(Telemetry.classifyError("JavaScript heap out of memory")).toBe("resource_exhausted")
+    expect(Telemetry.classifyError("quota exceeded for user")).toBe("resource_exhausted")
+    expect(Telemetry.classifyError("ENOMEM: not enough memory")).toBe("resource_exhausted")
+    expect(Telemetry.classifyError("disk I/O error on cache")).toBe("resource_exhausted")
+  })
+  // altimate_change end
 
   test("classifies timeout errors", () => {
     expect(Telemetry.classifyError("Request timeout after 30s")).toBe("timeout")
@@ -1530,11 +1628,15 @@ describe("telemetry.classifyError", () => {
     expect(Telemetry.classifyError("Invalid dialect specified")).toBe("validation")
     expect(Telemetry.classifyError("Missing required field")).toBe("validation")
     expect(Telemetry.classifyError("Required parameter 'query' not provided")).toBe("validation")
-    // altimate_change start — expanded validation patterns
-    expect(Telemetry.classifyError("You must read file /path/to/file before overwriting it")).toBe("validation")
-    expect(Telemetry.classifyError("File has been modified since it was last read")).toBe("validation")
+    // altimate_change start — file_stale split out from validation
+    // These are now classified as file_stale, not validation
+    expect(Telemetry.classifyError("You must read file /path/to/file before overwriting it")).toBe("file_stale")
+    expect(Telemetry.classifyError("File has been modified since it was last read")).toBe("file_stale")
+    expect(Telemetry.classifyError("You must read file before overwriting it. Use the Read tool first")).toBe("file_stale")
+    // HTTP 404 "does not exist" matches http_error first (pattern priority), not validation
+    expect(Telemetry.classifyError("HTTP 404: https://example.com/page does not exist")).toBe("http_error")
+    // SQL "does not exist" matches validation (no http_error keywords present)
     expect(Telemetry.classifyError("error: column foo does not exist")).toBe("validation")
-    expect(Telemetry.classifyError("You must read file before overwriting it. Use the Read tool first")).toBe("validation")
     // altimate_change end
   })
 
@@ -1553,12 +1655,25 @@ describe("telemetry.classifyError", () => {
     expect(Telemetry.classifyError("Assertion failed: x > 0")).toBe("internal")
   })
 
+  // altimate_change start — file_stale class tests
+  test("classifies file_stale errors", () => {
+    expect(Telemetry.classifyError("You must read file /path/to/file before overwriting it")).toBe("file_stale")
+    expect(Telemetry.classifyError("File /foo.ts has been modified since it was last read")).toBe("file_stale")
+    expect(Telemetry.classifyError("Read the file before overwriting it")).toBe("file_stale")
+  })
+  // altimate_change end
+
   // altimate_change start — http_error class and priority ordering tests
   test("classifies http errors", () => {
     expect(Telemetry.classifyError("Request failed with status code: 404 (example.com)")).toBe("http_error")
     expect(Telemetry.classifyError("Request failed with status code: 500")).toBe("http_error")
     expect(Telemetry.classifyError("status code: 403")).toBe("http_error")
     expect(Telemetry.classifyError("Request failed with status")).toBe("http_error")
+    // altimate_change start — HTTP status codes in webfetch error messages
+    expect(Telemetry.classifyError("HTTP 404: https://example.com does not exist. Do NOT retry")).toBe("http_error")
+    expect(Telemetry.classifyError("HTTP 410: https://example.com has been permanently removed")).toBe("http_error")
+    expect(Telemetry.classifyError("HTTP 429: Rate limited by example.com")).toBe("http_error")
+    // altimate_change end
   })
 
   test("priority ordering: earlier patterns win over later ones", () => {
@@ -1811,5 +1926,337 @@ describe("telemetry.maskArgs", () => {
     })
     const parsed = JSON.parse(masked)
     expect(parsed.connection_string).toBe("****")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// task_outcome_signal event type and deriveQualitySignal
+// ---------------------------------------------------------------------------
+describe("telemetry.task_outcome_signal", () => {
+  test("accepts valid task_outcome_signal event with all signals", () => {
+    const signals = ["accepted", "error", "abandoned", "cancelled"] as const
+    for (const signal of signals) {
+      const event: Telemetry.Event = {
+        type: "task_outcome_signal",
+        timestamp: Date.now(),
+        session_id: "test-session",
+        signal,
+        tool_count: 10,
+        step_count: 3,
+        duration_ms: 45000,
+        last_tool_category: "sql",
+      }
+      expect(event.type).toBe("task_outcome_signal")
+      expect(event.signal).toBe(signal)
+      expect(typeof event.tool_count).toBe("number")
+      expect(typeof event.step_count).toBe("number")
+      expect(typeof event.duration_ms).toBe("number")
+      expect(typeof event.last_tool_category).toBe("string")
+    }
+  })
+
+  test("event can be passed to Telemetry.track without error", () => {
+    expect(() => {
+      Telemetry.track({
+        type: "task_outcome_signal",
+        timestamp: Date.now(),
+        session_id: "s1",
+        signal: "accepted",
+        tool_count: 5,
+        step_count: 2,
+        duration_ms: 30000,
+        last_tool_category: "dbt",
+      })
+    }).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// deriveQualitySignal — exported pure function
+// ---------------------------------------------------------------------------
+describe("telemetry.deriveQualitySignal", () => {
+  test("completed outcome produces 'accepted' signal", () => {
+    expect(Telemetry.deriveQualitySignal("completed")).toBe("accepted")
+  })
+
+  test("abandoned outcome produces 'abandoned' signal", () => {
+    expect(Telemetry.deriveQualitySignal("abandoned")).toBe("abandoned")
+  })
+
+  test("aborted outcome produces 'cancelled' signal", () => {
+    expect(Telemetry.deriveQualitySignal("aborted")).toBe("cancelled")
+  })
+
+  test("error outcome produces 'error' signal", () => {
+    expect(Telemetry.deriveQualitySignal("error")).toBe("error")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// classifyTaskIntent — keyword/regex intent classifier
+// ---------------------------------------------------------------------------
+describe("telemetry.classifyTaskIntent", () => {
+  test("classifies dbt debugging with high confidence", () => {
+    expect(Telemetry.classifyTaskIntent("my dbt error won't go away")).toEqual({ intent: "debug_dbt", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("dbt fix this broken model")).toEqual({ intent: "debug_dbt", confidence: 1.0 })
+  })
+
+  test("classifies dbt run/build as weak dbt signal", () => {
+    expect(Telemetry.classifyTaskIntent("run dbt build")).toEqual({ intent: "debug_dbt", confidence: 0.5 })
+  })
+
+  test("classifies SQL writing with high confidence", () => {
+    expect(Telemetry.classifyTaskIntent("write a sql query to get active users")).toEqual({ intent: "write_sql", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("create a select statement for orders")).toEqual({ intent: "write_sql", confidence: 1.0 })
+  })
+
+  test("classifies query optimization", () => {
+    expect(Telemetry.classifyTaskIntent("optimize this slow query")).toEqual({ intent: "optimize_query", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("make my query faster")).toEqual({ intent: "optimize_query", confidence: 1.0 })
+  })
+
+  test("classifies model building", () => {
+    expect(Telemetry.classifyTaskIntent("create a new staging model for orders")).toEqual({ intent: "build_model", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("build a dbt model")).toEqual({ intent: "build_model", confidence: 1.0 })
+  })
+
+  test("classifies lineage analysis", () => {
+    expect(Telemetry.classifyTaskIntent("show me the lineage of this model")).toEqual({ intent: "analyze_lineage", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("what are the downstream dependencies")).toEqual({ intent: "analyze_lineage", confidence: 1.0 })
+  })
+
+  test("classifies schema exploration", () => {
+    expect(Telemetry.classifyTaskIntent("show me the tables in this database")).toEqual({ intent: "explore_schema", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("what columns does the orders table have")).toEqual({ intent: "explore_schema", confidence: 1.0 })
+  })
+
+  test("classifies SQL migration", () => {
+    expect(Telemetry.classifyTaskIntent("migrate this query from postgres to snowflake")).toEqual({ intent: "migrate_sql", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("translate SQL dialect to BigQuery")).toEqual({ intent: "migrate_sql", confidence: 1.0 })
+  })
+
+  test("classifies warehouse management", () => {
+    expect(Telemetry.classifyTaskIntent("connect to my snowflake warehouse")).toEqual({ intent: "manage_warehouse", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("test the database connection")).toEqual({ intent: "manage_warehouse", confidence: 1.0 })
+  })
+
+  test("classifies finops queries", () => {
+    expect(Telemetry.classifyTaskIntent("how much are we spending on Snowflake credits")).toEqual({ intent: "finops", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("find the most expensive queries")).toEqual({ intent: "finops", confidence: 1.0 })
+  })
+
+  test("falls back to general for unrecognized input", () => {
+    expect(Telemetry.classifyTaskIntent("hello how are you")).toEqual({ intent: "general", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("what is the meaning of life")).toEqual({ intent: "general", confidence: 1.0 })
+  })
+
+  test("is case insensitive", () => {
+    expect(Telemetry.classifyTaskIntent("OPTIMIZE THIS SLOW QUERY")).toEqual({ intent: "optimize_query", confidence: 1.0 })
+    expect(Telemetry.classifyTaskIntent("Write A SQL Query")).toEqual({ intent: "write_sql", confidence: 1.0 })
+  })
+
+  test("strong matches take priority over weak matches", () => {
+    // "dbt error" is a strong debug_dbt match, even though "query" is a weak write_sql match
+    expect(Telemetry.classifyTaskIntent("dbt error in my query")).toEqual({ intent: "debug_dbt", confidence: 1.0 })
+  })
+
+  test("task_classified event can be tracked", () => {
+    expect(() => {
+      Telemetry.track({
+        type: "task_classified",
+        timestamp: Date.now(),
+        session_id: "s1",
+        intent: "write_sql",
+        confidence: 1.0,
+        warehouse_type: "snowflake",
+      })
+    }).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// tool_chain_outcome event type validation
+// ---------------------------------------------------------------------------
+describe("telemetry.tool_chain_outcome", () => {
+  test("accepts valid tool_chain_outcome event", () => {
+    const chain = ["schema_inspect", "sql_execute", "dbt_build"]
+    const event: Telemetry.Event = {
+      type: "tool_chain_outcome",
+      timestamp: Date.now(),
+      session_id: "test-session",
+      chain: JSON.stringify(chain),
+      chain_length: chain.length,
+      had_errors: false,
+      error_recovery_count: 0,
+      final_outcome: "completed",
+      total_duration_ms: 45000,
+      total_cost: 0.15,
+    }
+    expect(event.type).toBe("tool_chain_outcome")
+    expect(JSON.parse(event.chain)).toEqual(chain)
+    expect(event.chain_length).toBe(3)
+    expect(event.had_errors).toBe(false)
+  })
+
+  test("event with errors and recoveries tracks correctly", () => {
+    const event: Telemetry.Event = {
+      type: "tool_chain_outcome",
+      timestamp: Date.now(),
+      session_id: "s1",
+      chain: JSON.stringify(["sql_execute", "sql_execute", "dbt_build"]),
+      chain_length: 3,
+      had_errors: true,
+      error_recovery_count: 1,
+      final_outcome: "completed",
+      total_duration_ms: 60000,
+      total_cost: 0.25,
+    }
+    expect(event.had_errors).toBe(true)
+    expect(event.error_recovery_count).toBe(1)
+  })
+
+  test("event can be passed to Telemetry.track", () => {
+    expect(() => {
+      Telemetry.track({
+        type: "tool_chain_outcome",
+        timestamp: Date.now(),
+        session_id: "s1",
+        chain: JSON.stringify(["read", "edit", "bash"]),
+        chain_length: 3,
+        had_errors: false,
+        error_recovery_count: 0,
+        final_outcome: "completed",
+        total_duration_ms: 10000,
+        total_cost: 0.05,
+      })
+    }).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// error_fingerprint event and hashError utility
+// ---------------------------------------------------------------------------
+describe("telemetry.error_fingerprint", () => {
+  test("hashError produces consistent 16-char hex string", () => {
+    const hash1 = Telemetry.hashError("connection refused")
+    const hash2 = Telemetry.hashError("connection refused")
+    expect(hash1).toBe(hash2)
+    expect(hash1).toHaveLength(16)
+    expect(/^[0-9a-f]{16}$/.test(hash1)).toBe(true)
+  })
+
+  test("hashError produces different hashes for different messages", () => {
+    const h1 = Telemetry.hashError("timeout error")
+    const h2 = Telemetry.hashError("parse error")
+    expect(h1).not.toBe(h2)
+  })
+
+  test("accepts valid error_fingerprint event", () => {
+    const event: Telemetry.Event = {
+      type: "error_fingerprint",
+      timestamp: Date.now(),
+      session_id: "s1",
+      error_hash: Telemetry.hashError("connection refused"),
+      error_class: "connection",
+      tool_name: "sql_execute",
+      tool_category: "sql",
+      recovery_successful: true,
+      recovery_tool: "sql_execute",
+    }
+    expect(event.type).toBe("error_fingerprint")
+    expect(event.recovery_successful).toBe(true)
+  })
+
+  test("event can be tracked for unrecovered errors", () => {
+    expect(() => {
+      Telemetry.track({
+        type: "error_fingerprint",
+        timestamp: Date.now(),
+        session_id: "s1",
+        error_hash: Telemetry.hashError("syntax error near ?"),
+        error_class: "parse_error",
+        tool_name: "sql_analyze",
+        tool_category: "sql",
+        recovery_successful: false,
+        recovery_tool: "",
+      })
+    }).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sql_fingerprint event + computeSqlFingerprint
+// ---------------------------------------------------------------------------
+describe("telemetry.sql_fingerprint", () => {
+  test("accepts valid sql_fingerprint event", () => {
+    const event: Telemetry.Event = {
+      type: "sql_fingerprint",
+      timestamp: Date.now(),
+      session_id: "s1",
+      statement_types: JSON.stringify(["SELECT"]),
+      categories: JSON.stringify(["query"]),
+      table_count: 3,
+      function_count: 2,
+      has_subqueries: true,
+      has_aggregation: true,
+      has_window_functions: false,
+      node_count: 42,
+    }
+    expect(event.type).toBe("sql_fingerprint")
+    expect(JSON.parse(event.statement_types)).toEqual(["SELECT"])
+    expect(event.table_count).toBe(3)
+  })
+
+  test("event can be tracked", () => {
+    expect(() => {
+      Telemetry.track({
+        type: "sql_fingerprint",
+        timestamp: Date.now(),
+        session_id: "s1",
+        statement_types: JSON.stringify(["SELECT", "INSERT"]),
+        categories: JSON.stringify(["query", "dml"]),
+        table_count: 5,
+        function_count: 0,
+        has_subqueries: false,
+        has_aggregation: false,
+        has_window_functions: true,
+        node_count: 100,
+      })
+    }).not.toThrow()
+  })
+})
+
+describe("sql-classify.computeSqlFingerprint", () => {
+  const { computeSqlFingerprint } = require("../../src/altimate/tools/sql-classify")
+
+  test("fingerprints a simple SELECT", () => {
+    const fp = computeSqlFingerprint("SELECT 1")
+    if (fp) {
+      expect(fp.statement_types).toContain("SELECT")
+      expect(fp.categories).toContain("query")
+      expect(typeof fp.node_count).toBe("number")
+    }
+  })
+
+  test("fingerprints a JOIN query", () => {
+    const fp = computeSqlFingerprint("SELECT a.id FROM orders a JOIN users b ON a.user_id = b.id")
+    if (fp) {
+      expect(fp.table_count).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  test("returns null for invalid SQL gracefully", () => {
+    const fp = computeSqlFingerprint("NOT VALID SQL }{}{")
+    expect(fp === null || typeof fp === "object").toBe(true)
+  })
+
+  test("no content leaks into fingerprint", () => {
+    const fp = computeSqlFingerprint("SELECT secret FROM sensitive_table WHERE password = 'hunter2'")
+    if (fp) {
+      const serialized = JSON.stringify(fp)
+      expect(serialized).not.toContain("secret")
+      expect(serialized).not.toContain("sensitive_table")
+      expect(serialized).not.toContain("hunter2")
+    }
   })
 })

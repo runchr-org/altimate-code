@@ -17,10 +17,24 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
   let db: any
   let connection: any
 
+  // altimate_change start — improve DuckDB error messages
+  function wrapDuckDBError(err: Error): Error {
+    const msg = err.message || String(err)
+    if (msg.toLowerCase().includes("locked") || msg.includes("SQLITE_BUSY") || msg.includes("DUCKDB_LOCKED")) {
+      return new Error(
+        `Database "${dbPath}" is locked by another process. ` +
+        `DuckDB does not support concurrent write access. ` +
+        `Close other connections to this file and try again.`,
+      )
+    }
+    return err
+  }
+  // altimate_change end
+
   function query(sql: string): Promise<any[]> {
     return new Promise((resolve, reject) => {
       connection.all(sql, (err: Error | null, rows: any[]) => {
-        if (err) reject(err)
+        if (err) reject(wrapDuckDBError(err))
         else resolve(rows ?? [])
       })
     })
@@ -29,7 +43,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
   function queryWithParams(sql: string, params: any[]): Promise<any[]> {
     return new Promise((resolve, reject) => {
       connection.all(sql, ...params, (err: Error | null, rows: any[]) => {
-        if (err) reject(err)
+        if (err) reject(wrapDuckDBError(err))
         else resolve(rows ?? [])
       })
     })
@@ -37,25 +51,57 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
 
   return {
     async connect() {
-      db = await new Promise<any>((resolve, reject) => {
-        let resolved = false
-        const instance = new duckdb.Database(
-          dbPath,
-          (err: Error | null) => {
-            if (resolved) return // Already resolved via timeout
-            resolved = true
-            if (err) reject(err)
-            else resolve(instance)
-          },
-        )
-        // Bun: native callback may not fire; fall back after 2s
-        setTimeout(() => {
-          if (!resolved) {
-            resolved = true
-            resolve(instance)
+      // altimate_change start — retry with read-only on lock errors
+      const tryConnect = (accessMode?: string): Promise<any> =>
+        new Promise<any>((resolve, reject) => {
+          let resolved = false
+          let timeout: ReturnType<typeof setTimeout> | undefined
+          const opts = accessMode ? { access_mode: accessMode } : undefined
+          const instance = new duckdb.Database(
+            dbPath,
+            opts,
+            (err: Error | null) => {
+              if (resolved) { if (instance && typeof instance.close === "function") instance.close(); return }
+              resolved = true
+              if (timeout) clearTimeout(timeout)
+              if (err) {
+                const msg = err.message || String(err)
+                if (msg.toLowerCase().includes("locked") || msg.includes("SQLITE_BUSY") || msg.includes("DUCKDB_LOCKED")) {
+                  reject(new Error("DUCKDB_LOCKED"))
+                } else {
+                  reject(err)
+                }
+              } else {
+                resolve(instance)
+              }
+            },
+          )
+          // Bun: native callback may not fire; fall back after 2s
+          timeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true
+              reject(new Error(`Timed out opening DuckDB database "${dbPath}"`))
+            }
+          }, 2000)
+        })
+
+      try {
+        db = await tryConnect()
+      } catch (err: any) {
+        if (err.message === "DUCKDB_LOCKED" && dbPath !== ":memory:") {
+          // Retry in read-only mode — allows concurrent reads
+          try {
+            db = await tryConnect("READ_ONLY")
+          } catch (retryErr) {
+            throw wrapDuckDBError(
+              retryErr instanceof Error ? retryErr : new Error(String(retryErr)),
+            )
           }
-        }, 2000)
-      })
+        } else {
+          throw err
+        }
+      }
+      // altimate_change end
       connection = db.connect()
     },
 

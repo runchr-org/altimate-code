@@ -17,6 +17,7 @@ const IMAGE_MAP: Array<{ pattern: RegExp; type: string }> = [
   { pattern: /mssql/i, type: "sqlserver" },
   { pattern: /oracle/i, type: "oracle" },
   { pattern: /gvenzl\/oracle/i, type: "oracle" },
+  { pattern: /clickhouse/i, type: "clickhouse" },
 ]
 
 /** Map environment variable names to connection config fields by db type. */
@@ -42,6 +43,11 @@ const ENV_MAP: Record<string, Record<string, string>> = {
     APP_USER_PASSWORD: "password",
     ORACLE_DATABASE: "database",
   },
+  clickhouse: {
+    CLICKHOUSE_USER: "user",
+    CLICKHOUSE_PASSWORD: "password",
+    CLICKHOUSE_DB: "database",
+  },
 }
 
 /** Default ports by database type. */
@@ -50,6 +56,7 @@ const DEFAULT_PORTS: Record<string, number> = {
   mysql: 3306,
   sqlserver: 1433,
   oracle: 1521,
+  clickhouse: 8123,
 }
 
 /** Default users by database type. */
@@ -58,6 +65,7 @@ const DEFAULT_USERS: Record<string, string> = {
   mysql: "root",
   sqlserver: "sa",
   oracle: "system",
+  clickhouse: "default",
 }
 
 function detectDbType(image: string): string | null {
@@ -67,10 +75,7 @@ function detectDbType(image: string): string | null {
   return null
 }
 
-function parseEnvVars(
-  envList: string[],
-  dbType: string,
-): Record<string, string> {
+function parseEnvVars(envList: string[], dbType: string): Record<string, string> {
   const result: Record<string, string> = {}
   const mapping = ENV_MAP[dbType] ?? {}
 
@@ -88,10 +93,7 @@ function parseEnvVars(
   return result
 }
 
-function extractPort(
-  ports: Record<string, any>[] | undefined,
-  dbType: string,
-): number {
+function extractPort(ports: Record<string, any>[] | undefined, dbType: string): number {
   const defaultPort = DEFAULT_PORTS[dbType] ?? 5432
   if (!ports || !Array.isArray(ports)) return defaultPort
 

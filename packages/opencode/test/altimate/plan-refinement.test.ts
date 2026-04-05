@@ -119,12 +119,10 @@ describe("plan_revision telemetry", () => {
     const promptTsPath = path.join(__dirname, "../../src/session/prompt.ts")
     const content = await fs.readFile(promptTsPath, "utf-8")
 
-    // Extract region around plan_revision telemetry — generous window
-    const startIdx = content.indexOf('type: "plan_revision"')
-    expect(startIdx).toBeGreaterThan(-1)
-    const regionStart = Math.max(0, startIdx - 200)
-    const regionEnd = Math.min(content.length, startIdx + 400)
-    const trackBlock = content.slice(regionStart, regionEnd)
+    // Find the Telemetry.track({ ... }) block containing plan_revision
+    const trackMatch = content.match(/Telemetry\.track\(\{[^}]*type:\s*"plan_revision"[^}]*\}\)/s)
+    expect(trackMatch).not.toBeNull()
+    const trackBlock = trackMatch![0]
     expect(trackBlock).toContain("timestamp:")
     expect(trackBlock).toContain("session_id:")
     expect(trackBlock).toContain("revision_number:")

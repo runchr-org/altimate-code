@@ -40,14 +40,19 @@ export namespace PostConnectSuggestions {
       )
     }
 
-    suggestions.push(
-      "Run SQL queries against your " +
-        ctx.warehouseType +
-        " warehouse using sql_execute",
-    )
-    suggestions.push(
-      "Analyze SQL quality and find potential issues with sql_analyze",
-    )
+    // MongoDB uses MQL, not SQL — skip SQL-specific suggestions
+    const nonSqlWarehouses = ["mongodb", "mongo"]
+    const isMongo = nonSqlWarehouses.includes(ctx.warehouseType.toLowerCase())
+    if (!isMongo) {
+      suggestions.push(
+        "Run SQL queries against your " +
+          ctx.warehouseType +
+          " warehouse using sql_execute",
+      )
+      suggestions.push(
+        "Analyze SQL quality and find potential issues with sql_analyze",
+      )
+    }
 
     if (ctx.dbtDetected) {
       suggestions.push(

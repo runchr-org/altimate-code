@@ -55,6 +55,9 @@ export namespace Filesystem {
     try {
       if (mode) {
         await writeFile(p, content, { mode })
+        // altimate_change start — upstream_fix: writeFile { mode } option does not reliably set permissions; explicit chmod ensures correct mode is applied
+        await chmod(p, mode)
+        // altimate_change end
       } else {
         await writeFile(p, content)
       }
@@ -63,6 +66,9 @@ export namespace Filesystem {
         await mkdir(dirname(p), { recursive: true })
         if (mode) {
           await writeFile(p, content, { mode })
+          // altimate_change start — upstream_fix: writeFile { mode } option does not reliably set permissions; explicit chmod ensures correct mode is applied
+          await chmod(p, mode)
+          // altimate_change end
         } else {
           await writeFile(p, content)
         }

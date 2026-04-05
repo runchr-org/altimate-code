@@ -189,7 +189,7 @@ You can also set a smaller model for lightweight tasks like summarization:
 altimate /discover
 ```
 
-Auto-detects your dbt projects, warehouse credentials from `~/.dbt/profiles.yml`, running Docker containers, and environment variables (`SNOWFLAKE_ACCOUNT`, `PGHOST`, `DATABASE_URL`, etc.).
+Auto-detects your dbt projects, warehouse credentials from `profiles.yml` (checks `DBT_PROFILES_DIR`, then your project directory, then the default `<home>/.dbt/profiles.yml`), running Docker containers, and environment variables (`SNOWFLAKE_ACCOUNT`, `PGHOST`, `DATABASE_URL`, etc.).
 
 ### Manual configuration
 

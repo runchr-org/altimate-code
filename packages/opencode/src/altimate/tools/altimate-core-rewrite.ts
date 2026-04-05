@@ -54,7 +54,7 @@ function formatRewrite(data: Record<string, any>): string {
   }
   lines.push("Rewrites applied:")
   for (const r of suggestions) {
-    lines.push(`  - ${r.rule ?? r.type}: ${r.explanation ?? r.description ?? r.improvement}`)
+    lines.push(`  - ${r.rule ?? r.type ?? "rewrite"}: ${r.explanation ?? r.description ?? r.improvement ?? ""}`)
   }
   return lines.join("\n")
 }

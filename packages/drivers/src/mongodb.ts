@@ -187,10 +187,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
     if (val instanceof Date) {
       return val.toISOString()
     }
-    // Arrays and plain objects — JSON-serialize for tabular display
-    if (Array.isArray(val) || typeof (val as any).toJSON !== "function") {
-      return JSON.stringify(val)
-    }
+    // Arrays, plain objects, and remaining BSON types — JSON-serialize for tabular display
     return JSON.stringify(val)
   }
 
@@ -333,20 +330,37 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
           if (!parsed.pipeline || !Array.isArray(parsed.pipeline)) {
             throw new Error("aggregate requires a 'pipeline' array")
           }
-          // Cap or append $limit to prevent OOM. Skip for $out/$merge write pipelines.
+          // Block dangerous stages/operators:
+          // - $out/$merge: write operations (top-level stage keys)
+          // - $function/$accumulator: arbitrary JS execution (can be nested in expressions)
           const pipeline = [...parsed.pipeline]
-          const hasWrite = pipeline.some((stage) => "$out" in stage || "$merge" in stage)
-          if (!hasWrite) {
-            const limitIdx = pipeline.findIndex((stage) => "$limit" in stage)
-            if (limitIdx >= 0) {
-              // Cap user-specified $limit against effectiveLimit
-              const userLimit = (pipeline[limitIdx] as any).$limit
-              if (typeof userLimit === "number" && userLimit > effectiveLimit) {
-                pipeline[limitIdx] = { $limit: effectiveLimit + 1 }
-              }
-            } else {
-              pipeline.push({ $limit: effectiveLimit + 1 })
+          const blockedWriteStages = ["$out", "$merge"]
+          const hasBlockedWrite = pipeline.some((stage) =>
+            blockedWriteStages.some((s) => s in stage),
+          )
+          if (hasBlockedWrite) {
+            throw new Error(
+              `Pipeline contains a blocked write stage (${blockedWriteStages.join(", ")}). Write operations are not allowed.`,
+            )
+          }
+          // $function/$accumulator can appear nested inside $project, $addFields, $group, etc.
+          // Stringify and scan to catch them at any depth.
+          const pipelineStr = JSON.stringify(pipeline)
+          if (pipelineStr.includes('"$function"') || pipelineStr.includes('"$accumulator"')) {
+            throw new Error(
+              "Pipeline contains a blocked operator ($function, $accumulator). Executing arbitrary JavaScript is not allowed.",
+            )
+          }
+          // Cap or append $limit to prevent OOM (write stages already blocked above).
+          const limitIdx = pipeline.findIndex((stage) => "$limit" in stage)
+          if (limitIdx >= 0) {
+            // Cap user-specified $limit against effectiveLimit
+            const userLimit = (pipeline[limitIdx] as any).$limit
+            if (typeof userLimit === "number" && userLimit > effectiveLimit) {
+              pipeline[limitIdx] = { $limit: effectiveLimit + 1 }
             }
+          } else {
+            pipeline.push({ $limit: effectiveLimit + 1 })
           }
 
           const docs = await coll.aggregate(pipeline).toArray()

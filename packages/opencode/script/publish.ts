@@ -29,6 +29,7 @@ const driverPeerDependencies: Record<string, string> = {
   mssql: ">=11",
   oracledb: ">=6",
   duckdb: ">=1",
+  "@clickhouse/client": ">=1",
 }
 
 const driverPeerDependenciesMeta: Record<string, { optional: true }> = Object.fromEntries(

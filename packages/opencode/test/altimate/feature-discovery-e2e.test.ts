@@ -96,7 +96,7 @@ describe("warehouse-add e2e: post-connect suggestions", () => {
 
     const tool = await WarehouseAddTool.init()
     const result = await tool.execute(
-      { name: "test_wh", config: { type: "snowflake", account: "xy12345", user: "admin", password: "secret" } },
+      { name: "test_wh", config: { type: "snowflake", account: "xy12345", user: "admin", password: "test-fake-password" } },
       ctx as any,
     )
 
@@ -132,7 +132,7 @@ describe("warehouse-add e2e: post-connect suggestions", () => {
 
     const tool = await WarehouseAddTool.init()
     const result = await tool.execute(
-      { name: "test_wh", config: { type: "snowflake", account: "xy12345", user: "admin", password: "secret" } },
+      { name: "test_wh", config: { type: "snowflake", account: "xy12345", user: "admin", password: "test-fake-password" } },
       ctx as any,
     )
 
@@ -213,7 +213,7 @@ describe("warehouse-add e2e: post-connect suggestions", () => {
 
     const tool = await WarehouseAddTool.init()
     const result = await tool.execute(
-      { name: "test_wh", config: { type: "snowflake", account: "xy12345", user: "admin", password: "secret" } },
+      { name: "test_wh", config: { type: "snowflake", account: "xy12345", user: "admin", password: "test-fake-password" } },
       ctx as any,
     )
 

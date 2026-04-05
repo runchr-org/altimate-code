@@ -2,7 +2,7 @@
 
 ## Overview
 
-Altimate Code connects to 11 databases natively via TypeScript drivers. No Python dependency required. Drivers are loaded lazily, so only the driver you need is imported at runtime.
+Altimate Code connects to 12 databases natively via TypeScript drivers. No Python dependency required. Drivers are loaded lazily, so only the driver you need is imported at runtime.
 
 ## Support Matrix
 
@@ -18,6 +18,7 @@ Altimate Code connects to 11 databases natively via TypeScript drivers. No Pytho
 | BigQuery | `@google-cloud/bigquery` | Service Account, ADC | ✅ Live account | 25 E2E tests, UNNEST/STRUCT/DATE types |
 | Databricks | `@databricks/sql` | PAT, OAuth | ✅ Live account | 24 E2E tests, Unity Catalog support |
 | MongoDB | `mongodb` | Password, Connection String | ✅ Docker | 90 E2E tests, MQL queries, aggregation pipelines |
+| ClickHouse | `@clickhouse/client` | Password, Connection String, TLS | ✅ Docker | HTTP(S) protocol, ClickHouse Cloud support |
 | Oracle | `oracledb` (thin) | Password | ❌ Needs Oracle 12.1+ | Thin mode only, no Instant Client |
 
 ## Installation
@@ -41,6 +42,7 @@ bun add mongodb                   # MongoDB
 bun add snowflake-sdk             # Snowflake
 bun add @google-cloud/bigquery    # BigQuery
 bun add @databricks/sql           # Databricks
+bun add @clickhouse/client        # ClickHouse
 bun add oracledb                  # Oracle (thin mode)
 ```
 
@@ -133,6 +135,16 @@ altimate-dbt init --project-root /path/to/dbt/project --python-path $(which pyth
 |--------|--------------|
 | Password | `host`, `port`, `service_name`, `user`, `password` |
 
+### ClickHouse
+
+| Method | Config Fields |
+|--------|--------------|
+| Password | `host`, `port`, `database`, `user`, `password` |
+| Connection String | `connection_string: "http://user:pass@host:8123"` |
+| TLS/HTTPS | `protocol: "https"`, `tls_ca_cert`, `tls_cert`, `tls_key` |
+
+ClickHouse driver supports server versions 23.3+ (all non-EOL releases). Uses the official `@clickhouse/client` package over HTTP(S). Compatible with ClickHouse Cloud, self-hosted, and Altinity.Cloud. Query history available via `system.query_log`.
+
 ### MongoDB
 | Method | Config Fields |
 |--------|--------------|
@@ -179,7 +191,7 @@ SSH auth types: `"key"` (default) or `"password"` (set `ssh_password`).
 
 The CLI auto-discovers connections from:
 
-1. **Docker containers**: detects running PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, MongoDB containers
+1. **Docker containers**: detects running PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, MongoDB containers
 2. **dbt profiles**: parses `~/.dbt/profiles.yml` for all supported adapters
 3. **Environment variables**: detects `SNOWFLAKE_ACCOUNT`, `PGHOST`, `MYSQL_HOST`, `MSSQL_HOST`, `ORACLE_HOST`, `DUCKDB_PATH`, `SQLITE_PATH`, etc.
 

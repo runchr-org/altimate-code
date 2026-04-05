@@ -28,19 +28,22 @@ export ANTHROPIC_API_KEY=sk-ant-...
 altimate
 ```
 
+!!! tip "Don't want to manage API keys?"
+    The [Altimate LLM Gateway](https://datamates-docs.myaltimate.com/user-guide/components/llm-gateway/) gives you 10M tokens free — no API keys needed. It dynamically routes to the best model for each task across Sonnet 4.6, Opus 4.6, GPT-5.4, and more.
+
 ---
 
 ## Step 3: Connect Your Warehouse
 
 ### Option A: Auto-detect from dbt profiles
 
-If you have `~/.dbt/profiles.yml` configured:
+If you have a `profiles.yml` — either in your home directory's `.dbt/` folder, in your project repo, or pointed to by `DBT_PROFILES_DIR`:
 
 ```bash
 /discover
 ```
 
-Altimate reads your dbt profiles and creates warehouse connections automatically. You'll see output like:
+Altimate searches for `profiles.yml` in this order: `DBT_PROFILES_DIR` env var → project root (next to `dbt_project.yml`) → `<home>/.dbt/profiles.yml`. It reads your dbt profiles and creates warehouse connections automatically. You'll see output like:
 
 ```
 Found dbt project: jaffle_shop (dbt-snowflake)

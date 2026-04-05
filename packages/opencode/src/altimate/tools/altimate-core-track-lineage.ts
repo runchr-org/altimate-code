@@ -41,7 +41,7 @@ function formatTrackLineage(data: Record<string, any>): string {
   if (!data.edges?.length) return "No lineage edges found across queries."
   const lines = ["Lineage graph:\n"]
   for (const edge of data.edges) {
-    lines.push(`  ${edge.source} -> ${edge.target}${edge.transform ? ` (${edge.transform})` : ""}`)
+    lines.push(`  ${edge.source ?? "?"} -> ${edge.target ?? "?"}${edge.transform ? ` (${edge.transform})` : ""}`)
   }
   return lines.join("\n")
 }

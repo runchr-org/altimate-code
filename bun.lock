@@ -43,6 +43,7 @@
         "mongodb": "^6.0.0",
       },
       "optionalDependencies": {
+        "@clickhouse/client": "^1.0.0",
         "@databricks/sql": "^1.0.0",
         "@google-cloud/bigquery": "^8.0.0",
         "duckdb": "^1.0.0",
@@ -84,7 +85,7 @@
         "@ai-sdk/togetherai": "1.0.34",
         "@ai-sdk/vercel": "1.0.33",
         "@ai-sdk/xai": "2.0.51",
-        "@altimateai/altimate-core": "0.2.5",
+        "@altimateai/altimate-core": "0.2.6",
         "@altimateai/drivers": "workspace:*",
         "@aws-sdk/credential-providers": "3.993.0",
         "@clack/prompts": "1.0.0-alpha.1",
@@ -349,17 +350,17 @@
 
     "@altimateai/altimate-code": ["@altimateai/altimate-code@workspace:packages/opencode"],
 
-    "@altimateai/altimate-core": ["@altimateai/altimate-core@0.2.5", "", { "optionalDependencies": { "@altimateai/altimate-core-darwin-arm64": "0.2.5", "@altimateai/altimate-core-darwin-x64": "0.2.5", "@altimateai/altimate-core-linux-arm64-gnu": "0.2.5", "@altimateai/altimate-core-linux-x64-gnu": "0.2.5", "@altimateai/altimate-core-win32-x64-msvc": "0.2.5" } }, "sha512-Sqa0l3WhZP1BOOs2NI/U38zy1PRdlTjvH16P/Y3sjDa+5YUseHuZb0l1tRGq4LtPzw5hl1Azn5nKUypgfybamQ=="],
+    "@altimateai/altimate-core": ["@altimateai/altimate-core@0.2.6", "", { "optionalDependencies": { "@altimateai/altimate-core-darwin-arm64": "0.2.6", "@altimateai/altimate-core-darwin-x64": "0.2.6", "@altimateai/altimate-core-linux-arm64-gnu": "0.2.6", "@altimateai/altimate-core-linux-x64-gnu": "0.2.6", "@altimateai/altimate-core-win32-x64-msvc": "0.2.6" } }, "sha512-RJNxDqyCmaEEcumIH7v5aXcZIP+vF7qbANrvIvOMR/Qt9FxhY84Zj6HZtjxdP9Qw8cfukkEbIqnI+gHTkhc5RQ=="],
 
-    "@altimateai/altimate-core-darwin-arm64": ["@altimateai/altimate-core-darwin-arm64@0.2.5", "", { "os": "darwin", "cpu": "arm64" }, "sha512-JQ0FHXtnJqKTCr1sNuVdfsEi1iD32t7pYJW+oDCU4HnSCcC2WyswcmjHcWq9fzvj5Qhpg031gOk1bCiuy8ZhSQ=="],
+    "@altimateai/altimate-core-darwin-arm64": ["@altimateai/altimate-core-darwin-arm64@0.2.6", "", { "os": "darwin", "cpu": "arm64" }, "sha512-my1Li6VFrzEESQkSvGqMbw6othfHJk+Zkx9lY8WFNIiheBDesbunJatGUyvz7/hel56af3FHdgIIeF/H3kzUkA=="],
 
-    "@altimateai/altimate-core-darwin-x64": ["@altimateai/altimate-core-darwin-x64@0.2.5", "", { "os": "darwin", "cpu": "x64" }, "sha512-JWnwY+6Hz09UdOfV05s2gCbmtSMesvhzSbVE7q32JV8dKDA0pE+4jrmVLOkfmG69QvKrxnB4lsZfBPGH2SRFHQ=="],
+    "@altimateai/altimate-core-darwin-x64": ["@altimateai/altimate-core-darwin-x64@0.2.6", "", { "os": "darwin", "cpu": "x64" }, "sha512-e+F49pmM1eeRJ/0xBb8HAr9KzCe3WNJ40mViJ0T+uuB3RrPO1+93/4zdsDxZIh+8cG60vDBm/3A8k9ELu1x/Hg=="],
 
-    "@altimateai/altimate-core-linux-arm64-gnu": ["@altimateai/altimate-core-linux-arm64-gnu@0.2.5", "", { "os": "linux", "cpu": "arm64" }, "sha512-wmUU2TQNY94l6Mx38ShWZHY+3UTP2DNcnJ1ljHFR3FfL27tJ64dVNJhepfejcNPg7kn0Mj6jGXVT7d2QeNiDaw=="],
+    "@altimateai/altimate-core-linux-arm64-gnu": ["@altimateai/altimate-core-linux-arm64-gnu@0.2.6", "", { "os": "linux", "cpu": "arm64" }, "sha512-/7okkP2LJBQFTekBWFvx9SLs8JhzYhfQsMWKnnr1kyZgl4Paw2emT6zyGce9uGBoXc8RXoOxyqlwBTe1Rqeupw=="],
 
-    "@altimateai/altimate-core-linux-x64-gnu": ["@altimateai/altimate-core-linux-x64-gnu@0.2.5", "", { "os": "linux", "cpu": "x64" }, "sha512-aNISxoTuBm44Z1tv0hUwLmcwh0v2QN76XpZmjxG1xe9aJRKKP+WKaRgIUQgDIRLkHbKJCODsIGUlsq6TmU3nZQ=="],
+    "@altimateai/altimate-core-linux-x64-gnu": ["@altimateai/altimate-core-linux-x64-gnu@0.2.6", "", { "os": "linux", "cpu": "x64" }, "sha512-AhOsBwyxMsW+fDA6vXRX0iamXP5KBr01ZkcdD3OjvjohmdTN7679gcAwmIbHn177dnQNtwq1ZG6F6mVP/XL2YA=="],
 
-    "@altimateai/altimate-core-win32-x64-msvc": ["@altimateai/altimate-core-win32-x64-msvc@0.2.5", "", { "os": "win32", "cpu": "x64" }, "sha512-8kCGgA9JUCQJPtxSEpUMMRAM8hxt+r3kPyKuvj5Y2OqLiiJ9y9AfKx5FtGA73O8oA7YjuHzROvLBLDzs4kiI7Q=="],
+    "@altimateai/altimate-core-win32-x64-msvc": ["@altimateai/altimate-core-win32-x64-msvc@0.2.6", "", { "os": "win32", "cpu": "x64" }, "sha512-zxxB/FqvZMOuxjaz2tS397j6dtDoGYx3l2MDKbf4gGfjL1/Osc9I+cWndECONPJy5wq7jCY2B/dxjDJrob5zig=="],
 
     "@altimateai/dbt-integration": ["@altimateai/dbt-integration@0.2.9", "", { "dependencies": { "@altimateai/altimate-core": "0.1.6", "node-abort-controller": "^3.1.1", "node-fetch": "^3.3.2", "python-bridge": "^1.1.0", "semver": "^7.6.3", "yaml": "^2.5.0" }, "peerDependencies": { "patch-package": "^8.0.0" } }, "sha512-L+sazdclVNVPuRrSRq/0dGfyNEOHHGKqOCGEkZiXFbaW9hRGRqk+9LgmOUwyDq2VA79qvduOehe7+Uk0Oo3sow=="],
 
@@ -564,6 +565,10 @@
     "@clack/core": ["@clack/core@1.0.0-alpha.1", "", { "dependencies": { "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-rFbCU83JnN7l3W1nfgCqqme4ZZvTTgsiKQ6FM0l+r0P+o2eJpExcocBUWUIwnDzL76Aca9VhUdWmB2MbUv+Qyg=="],
 
     "@clack/prompts": ["@clack/prompts@1.0.0-alpha.1", "", { "dependencies": { "@clack/core": "1.0.0-alpha.1", "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-07MNT0OsxjKOcyVfX8KhXBhJiyUbDP1vuIAcHc+nx5v93MJO23pX3X/k3bWz6T3rpM9dgWPq90i4Jq7gZAyMbw=="],
+
+    "@clickhouse/client": ["@clickhouse/client@1.18.2", "", { "dependencies": { "@clickhouse/client-common": "1.18.2" } }, "sha512-fuquQswRSHWM6D079ZeuGqkMOsqtcUPL06UdTnowmoeeYjVrqisfVmvnw8pc3OeKS4kVb91oygb/MfLDiMs0TQ=="],
+
+    "@clickhouse/client-common": ["@clickhouse/client-common@1.18.2", "", {}, "sha512-J0SG6q9V31ydxonglpj9xhNRsUxCsF71iEZ784yldqMYwsHixj/9xHFDgBDX3DuMiDx/kPDfXnf+pimp08wIBA=="],
 
     "@colors/colors": ["@colors/colors@1.6.0", "", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
 

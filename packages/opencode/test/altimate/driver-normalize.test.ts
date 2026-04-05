@@ -793,3 +793,157 @@ describe("normalizeConfig — MongoDB", () => {
     expect(result.auth_source).toBe("admin")
   })
 })
+
+// ---------------------------------------------------------------------------
+// normalizeConfig — ClickHouse aliases
+// ---------------------------------------------------------------------------
+
+describe("normalizeConfig — ClickHouse", () => {
+  test("canonical clickhouse config passes through unchanged", () => {
+    const config = {
+      type: "clickhouse",
+      host: "localhost",
+      port: 8123,
+      database: "default",
+      user: "default",
+      password: "secret",
+    }
+    expect(normalizeConfig(config)).toEqual(config)
+  })
+
+  test("connectionString → connection_string", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      connectionString: "http://localhost:8123",
+    })
+    expect(result.connection_string).toBe("http://localhost:8123")
+    expect(result.connectionString).toBeUndefined()
+  })
+
+  test("uri → connection_string", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      uri: "http://localhost:8123",
+    })
+    expect(result.connection_string).toBe("http://localhost:8123")
+    expect(result.uri).toBeUndefined()
+  })
+
+  test("url → connection_string", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      url: "https://my-ch.cloud:8443",
+    })
+    expect(result.connection_string).toBe("https://my-ch.cloud:8443")
+    expect(result.url).toBeUndefined()
+  })
+
+  test("connection_string takes precedence over url alias", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      connection_string: "http://correct:8123",
+      url: "http://wrong:8123",
+    })
+    expect(result.connection_string).toBe("http://correct:8123")
+    expect(result.url).toBeUndefined()
+  })
+
+  test("username → user", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      username: "analytics",
+    })
+    expect(result.user).toBe("analytics")
+    expect(result.username).toBeUndefined()
+  })
+
+  test("dbname → database", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      dbname: "analytics",
+    })
+    expect(result.database).toBe("analytics")
+    expect(result.dbname).toBeUndefined()
+  })
+
+  test("requestTimeout → request_timeout", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      requestTimeout: 60000,
+    })
+    expect(result.request_timeout).toBe(60000)
+    expect(result.requestTimeout).toBeUndefined()
+  })
+
+  test("timeout → request_timeout", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      timeout: 30000,
+    })
+    expect(result.request_timeout).toBe(30000)
+    expect(result.timeout).toBeUndefined()
+  })
+
+  test("tlsCaCert → tls_ca_cert", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      tlsCaCert: "/path/to/ca.pem",
+    })
+    expect(result.tls_ca_cert).toBe("/path/to/ca.pem")
+    expect(result.tlsCaCert).toBeUndefined()
+  })
+
+  test("ssl_ca → tls_ca_cert", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      ssl_ca: "/path/to/ca.pem",
+    })
+    expect(result.tls_ca_cert).toBe("/path/to/ca.pem")
+    expect(result.ssl_ca).toBeUndefined()
+  })
+
+  test("ca_cert → tls_ca_cert", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      ca_cert: "/path/to/ca.pem",
+    })
+    expect(result.tls_ca_cert).toBe("/path/to/ca.pem")
+    expect(result.ca_cert).toBeUndefined()
+  })
+
+  test("ssl_cert → tls_cert", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      ssl_cert: "/path/to/cert.pem",
+    })
+    expect(result.tls_cert).toBe("/path/to/cert.pem")
+    expect(result.ssl_cert).toBeUndefined()
+  })
+
+  test("tlsCert → tls_cert", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      tlsCert: "/path/to/cert.pem",
+    })
+    expect(result.tls_cert).toBe("/path/to/cert.pem")
+    expect(result.tlsCert).toBeUndefined()
+  })
+
+  test("tlsKey → tls_key", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      tlsKey: "/path/to/key.pem",
+    })
+    expect(result.tls_key).toBe("/path/to/key.pem")
+    expect(result.tlsKey).toBeUndefined()
+  })
+
+  test("ssl_key → tls_key", () => {
+    const result = normalizeConfig({
+      type: "clickhouse",
+      ssl_key: "/path/to/key.pem",
+    })
+    expect(result.tls_key).toBe("/path/to/key.pem")
+    expect(result.ssl_key).toBeUndefined()
+  })
+})

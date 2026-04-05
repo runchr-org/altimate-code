@@ -163,7 +163,7 @@ Refinements are capped at **5 revisions per session** to avoid endless loops. Af
 
 ### Example conversation
 
-```
+```text
 You: Plan a migration of our raw_events table from a view to an incremental model
 
 Plan: Here's my proposed approach:

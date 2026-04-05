@@ -43,12 +43,12 @@ export const DbtLineageTool = Tool.define("dbt_lineage", {
 function formatDbtLineage(result: DbtLineageResult): string {
   const lines: string[] = []
 
-  lines.push(`Model: ${result.model_name}`)
+  lines.push(`Model: ${result.model_name ?? "unknown"}`)
   if (result.model_unique_id) lines.push(`ID: ${result.model_unique_id}`)
   lines.push("")
 
   if (result.confidence_factors.length > 0) {
-    lines.push(`Confidence: ${result.confidence}`)
+    lines.push(`Confidence: ${result.confidence ?? "unknown"}`)
     lines.push(`  Note: ${result.confidence_factors.join("; ")}`)
     lines.push("")
   }

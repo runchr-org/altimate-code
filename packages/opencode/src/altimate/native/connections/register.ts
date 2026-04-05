@@ -409,7 +409,7 @@ register("schema.inspect", async (params: SchemaInspectParams): Promise<SchemaIn
 // --- dbt.profiles ---
 register("dbt.profiles", async (params: DbtProfilesParams): Promise<DbtProfilesResult> => {
   try {
-    const connections = await parseDbtProfiles(params.path)
+    const connections = await parseDbtProfiles(params.path, params.projectDir)
     return {
       success: true,
       connections,

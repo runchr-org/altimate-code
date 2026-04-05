@@ -167,7 +167,7 @@ describe("tool.webfetch", () => {
           fn: async () => {
             const webfetch = await WebFetchTool.init()
             expect(webfetch.execute({ url: "https://example.com/page", format: "text" }, ctx)).rejects.toThrow(
-              "Request failed with status code: 500",
+              "HTTP 500: Request to https://example.com/page failed. This may be transient — retry once if needed.",
             )
             expect(calls.length).toBe(1)
             expect(calls[0]).toContain("altimate-code")
@@ -214,7 +214,7 @@ describe("tool.webfetch", () => {
           fn: async () => {
             const webfetch = await WebFetchTool.init()
             expect(webfetch.execute({ url: "https://example.com/blocked", format: "text" }, ctx)).rejects.toThrow(
-              "Request failed with status code: 403",
+              "HTTP 403: Access to https://example.com/blocked is forbidden. The server rejected both bot and browser User-Agents. Try a different source.",
             )
             expect(calls.length).toBe(2)
             expect(calls[0]).toContain("altimate-code")

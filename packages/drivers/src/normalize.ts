@@ -83,6 +83,15 @@ const MONGODB_ALIASES: AliasMap = {
   server_selection_timeout: ["serverSelectionTimeoutMS"],
 }
 
+const CLICKHOUSE_ALIASES: AliasMap = {
+  ...COMMON_ALIASES,
+  connection_string: ["connectionString", "uri", "url"],
+  request_timeout: ["requestTimeout", "timeout"],
+  tls_ca_cert: ["tlsCaCert", "ssl_ca", "ca_cert"],
+  tls_cert: ["tlsCert", "ssl_cert"],
+  tls_key: ["tlsKey", "ssl_key"],
+}
+
 /** Map of warehouse type to its alias map. */
 const DRIVER_ALIASES: Record<string, AliasMap> = {
   snowflake: SNOWFLAKE_ALIASES,
@@ -98,6 +107,7 @@ const DRIVER_ALIASES: Record<string, AliasMap> = {
   oracle: ORACLE_ALIASES,
   mongodb: MONGODB_ALIASES,
   mongo: MONGODB_ALIASES,
+  clickhouse: CLICKHOUSE_ALIASES,
   // duckdb and sqlite have simple configs — no aliases needed
 }
 

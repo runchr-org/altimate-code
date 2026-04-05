@@ -128,6 +128,7 @@ const DRIVER_MAP: Record<string, string> = {
   sqlite: "@altimateai/drivers/sqlite",
   mongodb: "@altimateai/drivers/mongodb",
   mongo: "@altimateai/drivers/mongodb",
+  clickhouse: "@altimateai/drivers/clickhouse",
 }
 
 async function createConnector(name: string, config: ConnectionConfig): Promise<Connector> {
@@ -135,7 +136,6 @@ async function createConnector(name: string, config: ConnectionConfig): Promise<
   if (!driverPath) {
     // altimate_change start — friendlier error for known-but-unsupported databases
     const KNOWN_UNSUPPORTED: Record<string, string> = {
-      clickhouse: "ClickHouse is not yet supported. Use the bash tool with `clickhouse-client` or `curl` to query ClickHouse directly.",
       cassandra: "Cassandra is not yet supported. Use the bash tool with `cqlsh` to query Cassandra directly.",
       cockroachdb: "CockroachDB is not yet supported. It is PostgreSQL-compatible — try type: postgres instead.",
       timescaledb: "TimescaleDB is a PostgreSQL extension — use type: postgres instead.",
@@ -157,7 +157,18 @@ async function createConnector(name: string, config: ConnectionConfig): Promise<
 
   // altimate_change start — validate password is a string for drivers that require it
   // Prevents cryptic SASL/SCRAM errors from database drivers
-  const PASSWORD_DRIVERS = new Set(["postgres", "postgresql", "redshift", "mysql", "mariadb", "sqlserver", "mssql", "oracle", "snowflake"])
+  const PASSWORD_DRIVERS = new Set([
+    "postgres",
+    "postgresql",
+    "redshift",
+    "mysql",
+    "mariadb",
+    "sqlserver",
+    "mssql",
+    "oracle",
+    "snowflake",
+    "clickhouse",
+  ])
   if (
     PASSWORD_DRIVERS.has(resolvedConfig.type.toLowerCase()) &&
     !resolvedConfig.connection_string &&
@@ -220,6 +231,9 @@ async function createConnector(name: string, config: ConnectionConfig): Promise<
         break
       case "@altimateai/drivers/mongodb":
         mod = await import("@altimateai/drivers/mongodb")
+        break
+      case "@altimateai/drivers/clickhouse":
+        mod = await import("@altimateai/drivers/clickhouse")
         break
       default:
         throw new Error(`No static import available for driver: ${driverPath}`)
