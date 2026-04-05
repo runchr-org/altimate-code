@@ -11,6 +11,7 @@ import { PostConnectSuggestions } from "./post-connect-suggestions"
 // altimate_change end
 // altimate_change start — pre-execution SQL validation via cached schema
 import { getCache } from "../native/schema/cache"
+import * as Registry from "../native/connections/registry"
 // altimate_change end
 
 export const SqlExecuteTool = Tool.define("sql_execute", {
@@ -104,6 +105,10 @@ export const SqlExecuteTool = Tool.define("sql_execute", {
 
 // altimate_change start — pre-execution SQL validation via cached schema
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+// High ceiling so large warehouses aren't arbitrarily truncated; we emit
+// schema_truncated in telemetry when the cap is reached so the shadow sample
+// can be interpreted correctly.
+const COLUMN_SCAN_LIMIT = 500_000
 
 interface PreValidationResult {
   blocked: boolean
@@ -113,33 +118,43 @@ interface PreValidationResult {
 async function preValidateSql(sql: string, warehouse?: string): Promise<PreValidationResult> {
   const startTime = Date.now()
   try {
-    const cache = await getCache()
-    const status = cache.cacheStatus()
-
-    // Find the target warehouse in cache
-    const warehouseName = warehouse || status.warehouses[0]?.name
+    // Resolve the warehouse the same way sql.execute's fallback path does:
+    // when caller omits `warehouse`, sql.execute uses Registry.list()[0].
+    // Matching that here keeps the shadow validation aligned with actual
+    // execution (dbt-routed queries are a known gap — they short-circuit
+    // before this fallback, so validation may use a different warehouse
+    // than the one dbt selects).
+    let warehouseName = warehouse
     if (!warehouseName) {
-      trackPreValidation("skipped", "no_cache", 0, Date.now() - startTime)
+      const registered = Registry.list().warehouses
+      warehouseName = registered[0]?.name
+    }
+    if (!warehouseName) {
+      trackPreValidation("skipped", "no_cache", 0, Date.now() - startTime, false)
       return { blocked: false }
     }
 
+    const cache = await getCache()
+    const status = cache.cacheStatus()
+
     const warehouseStatus = status.warehouses.find((w) => w.name === warehouseName)
     if (!warehouseStatus?.last_indexed) {
-      trackPreValidation("skipped", "no_cache", 0, Date.now() - startTime)
+      trackPreValidation("skipped", "no_cache", 0, Date.now() - startTime, false)
       return { blocked: false }
     }
 
     // Check cache freshness
     const cacheAge = Date.now() - new Date(warehouseStatus.last_indexed).getTime()
     if (cacheAge > CACHE_TTL_MS) {
-      trackPreValidation("skipped", "stale_cache", 0, Date.now() - startTime)
+      trackPreValidation("skipped", "stale_cache", 0, Date.now() - startTime, false)
       return { blocked: false }
     }
 
     // Build schema context from cached columns
-    const columns = cache.listColumns(warehouseName, 10_000)
+    const columns = cache.listColumns(warehouseName, COLUMN_SCAN_LIMIT)
+    const schemaTruncated = columns.length >= COLUMN_SCAN_LIMIT
     if (columns.length === 0) {
-      trackPreValidation("skipped", "empty_cache", 0, Date.now() - startTime)
+      trackPreValidation("skipped", "empty_cache", 0, Date.now() - startTime, false)
       return { blocked: false }
     }
 
@@ -168,7 +183,7 @@ async function preValidateSql(sql: string, warehouse?: string): Promise<PreValid
     const isValid = data.valid !== false && errors.length === 0
 
     if (isValid) {
-      trackPreValidation("passed", "valid", columns.length, Date.now() - startTime)
+      trackPreValidation("passed", "valid", columns.length, Date.now() - startTime, schemaTruncated)
       return { blocked: false }
     }
 
@@ -180,7 +195,7 @@ async function preValidateSql(sql: string, warehouse?: string): Promise<PreValid
 
     if (structuralErrors.length === 0) {
       // Non-structural errors (ambiguous cases) — let them through
-      trackPreValidation("passed", "non_structural", columns.length, Date.now() - startTime)
+      trackPreValidation("passed", "non_structural", columns.length, Date.now() - startTime, schemaTruncated)
       return { blocked: false }
     }
 
@@ -202,11 +217,11 @@ async function preValidateSql(sql: string, warehouse?: string): Promise<PreValid
       `Fix the query and retry. If the schema cache is outdated, run schema_index to refresh it.`,
     ].join("\n")
 
-    trackPreValidation("blocked", "structural_error", columns.length, Date.now() - startTime, errorMsgs)
+    trackPreValidation("blocked", "structural_error", columns.length, Date.now() - startTime, schemaTruncated, errorMsgs)
     return { blocked: true, error: errorOutput }
   } catch {
     // Validation failure should never block execution
-    trackPreValidation("error", "validation_exception", 0, Date.now() - startTime)
+    trackPreValidation("error", "validation_exception", 0, Date.now() - startTime, false)
     return { blocked: false }
   }
 }
@@ -216,8 +231,13 @@ function trackPreValidation(
   reason: string,
   schema_columns: number,
   duration_ms: number,
+  schema_truncated: boolean,
   error_message?: string,
 ) {
+  // Mask schema identifiers (table / column names, paths, user IDs) from the
+  // validator error BEFORE it leaves the process — these are PII-adjacent and
+  // must not land in App Insights as raw strings.
+  const masked = error_message ? Telemetry.maskString(error_message).slice(0, 500) : undefined
   Telemetry.track({
     type: "sql_pre_validation",
     timestamp: Date.now(),
@@ -225,8 +245,9 @@ function trackPreValidation(
     outcome,
     reason,
     schema_columns,
+    schema_truncated,
     duration_ms,
-    ...(error_message && { error_message: error_message.slice(0, 500) }),
+    ...(masked && { error_message: masked }),
   })
 }
 // altimate_change end

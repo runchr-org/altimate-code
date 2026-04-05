@@ -647,6 +647,8 @@ export namespace Telemetry {
         /** why: no_cache, stale_cache, empty_cache, valid, non_structural, structural_error, validation_exception */
         reason: string
         schema_columns: number
+        /** true when schema scan hit the column-scan cap — flags samples biased by large-warehouse truncation */
+        schema_truncated: boolean
         duration_ms: number
         error_message?: string
       }
