@@ -2,6 +2,7 @@
  * Unit tests for SQL Server driver logic:
  * - TOP injection (vs LIMIT)
  * - Truncation detection
+ * - Azure AD authentication (7 flows)
  * - Schema introspection queries
  * - Connection lifecycle
  * - Result format mapping
@@ -50,6 +51,18 @@ mock.module("mssql", () => ({
       }
     },
   },
+}))
+
+// Mock @azure/identity for Azure AD tests
+class MockDefaultAzureCredential {
+  opts: any
+  constructor(opts?: any) {
+    this.opts = opts
+  }
+}
+
+mock.module("@azure/identity", () => ({
+  DefaultAzureCredential: MockDefaultAzureCredential,
 }))
 
 // Import after mocking
@@ -126,6 +139,165 @@ describe("SQL Server driver unit tests", () => {
       const result = await connector.execute("SELECT * FROM t")
       expect(result.rows).toEqual([])
       expect(result.truncated).toBe(false)
+    })
+  })
+
+  // --- Azure AD authentication ---
+
+  describe("Azure AD authentication", () => {
+    test("standard auth uses user/password directly", async () => {
+      resetMocks()
+      const c = await connect({ host: "localhost", database: "db", user: "sa", password: "pass" })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.user).toBe("sa")
+      expect(cfg.password).toBe("pass")
+      expect(cfg.authentication).toBeUndefined()
+    })
+
+    test("azure-active-directory-password builds correct auth object", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        user: "user@domain.com",
+        password: "secret",
+        authentication: "azure-active-directory-password",
+        azure_client_id: "client-123",
+        azure_tenant_id: "tenant-456",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication).toEqual({
+        type: "azure-active-directory-password",
+        options: {
+          userName: "user@domain.com",
+          password: "secret",
+          clientId: "client-123",
+          tenantId: "tenant-456",
+        },
+      })
+      expect(cfg.user).toBeUndefined()
+      expect(cfg.password).toBeUndefined()
+    })
+
+    test("azure-active-directory-access-token passes token", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "azure-active-directory-access-token",
+        access_token: "eyJhbGciOi...",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication).toEqual({
+        type: "azure-active-directory-access-token",
+        options: { token: "eyJhbGciOi..." },
+      })
+    })
+
+    test("azure-active-directory-service-principal-secret builds SP auth", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "azure-active-directory-service-principal-secret",
+        azure_client_id: "sp-client",
+        azure_client_secret: "sp-secret",
+        azure_tenant_id: "sp-tenant",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication).toEqual({
+        type: "azure-active-directory-service-principal-secret",
+        options: {
+          clientId: "sp-client",
+          clientSecret: "sp-secret",
+          tenantId: "sp-tenant",
+        },
+      })
+    })
+
+    test("azure-active-directory-msi-vm builds MSI auth with optional clientId", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "azure-active-directory-msi-vm",
+        azure_client_id: "msi-client",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication).toEqual({
+        type: "azure-active-directory-msi-vm",
+        options: { clientId: "msi-client" },
+      })
+    })
+
+    test("azure-active-directory-msi-app-service works without clientId", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "azure-active-directory-msi-app-service",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication).toEqual({
+        type: "azure-active-directory-msi-app-service",
+        options: {},
+      })
+    })
+
+    test("azure-active-directory-default uses DefaultAzureCredential", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "azure-active-directory-default",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication.type).toBe("token-credential")
+      expect(cfg.authentication.options.credential).toBeInstanceOf(MockDefaultAzureCredential)
+    })
+
+    test("token-credential uses DefaultAzureCredential with managed identity", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "token-credential",
+        azure_client_id: "mi-client-id",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.authentication.type).toBe("token-credential")
+      const cred = cfg.authentication.options.credential as MockDefaultAzureCredential
+      expect(cred.opts).toEqual({ managedIdentityClientId: "mi-client-id" })
+    })
+
+    test("encryption forced for all Azure AD connections", async () => {
+      resetMocks()
+      const c = await connect({
+        host: "myserver.database.windows.net",
+        database: "db",
+        authentication: "azure-active-directory-password",
+        user: "u",
+        password: "p",
+      })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.options.encrypt).toBe(true)
+    })
+
+    test("standard auth does not force encryption", async () => {
+      resetMocks()
+      const c = await connect({ host: "localhost", database: "db", user: "sa", password: "pass" })
+      await c.connect()
+      const cfg = mockConnectCalls[0]
+      expect(cfg.options.encrypt).toBe(false)
     })
   })
 

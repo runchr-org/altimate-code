@@ -24,8 +24,6 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
         server: config.host ?? "127.0.0.1",
         port: config.port ?? 1433,
         database: config.database,
-        user: config.user,
-        password: config.password,
         options: {
           encrypt: config.encrypt ?? false,
           trustServerCertificate: config.trust_server_certificate ?? true,
@@ -37,6 +35,71 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
           min: 0,
           idleTimeoutMillis: 30000,
         },
+      }
+
+      const authType = config.authentication as string | undefined
+
+      if (authType?.startsWith("azure-active-directory") || authType === "token-credential") {
+        // Azure AD / Entra ID — always encrypt
+        ;(mssqlConfig.options as any).encrypt = true
+
+        if (authType === "token-credential" || authType === "azure-active-directory-default") {
+          try {
+            const { DefaultAzureCredential } = await import("@azure/identity")
+            mssqlConfig.authentication = {
+              type: "token-credential",
+              options: {
+                credential: new DefaultAzureCredential(
+                  config.azure_client_id
+                    ? { managedIdentityClientId: config.azure_client_id as string }
+                    : undefined,
+                ),
+              },
+            }
+          } catch {
+            throw new Error(
+              "Azure AD authentication requires @azure/identity. Run: npm install @azure/identity",
+            )
+          }
+        } else if (authType === "azure-active-directory-password") {
+          mssqlConfig.authentication = {
+            type: "azure-active-directory-password",
+            options: {
+              userName: config.user,
+              password: config.password,
+              clientId: config.azure_client_id,
+              tenantId: config.azure_tenant_id,
+            },
+          }
+        } else if (authType === "azure-active-directory-access-token") {
+          mssqlConfig.authentication = {
+            type: "azure-active-directory-access-token",
+            options: { token: config.token ?? config.access_token },
+          }
+        } else if (
+          authType === "azure-active-directory-msi-vm" ||
+          authType === "azure-active-directory-msi-app-service"
+        ) {
+          mssqlConfig.authentication = {
+            type: authType,
+            options: {
+              ...(config.azure_client_id && { clientId: config.azure_client_id }),
+            },
+          }
+        } else if (authType === "azure-active-directory-service-principal-secret") {
+          mssqlConfig.authentication = {
+            type: "azure-active-directory-service-principal-secret",
+            options: {
+              clientId: config.azure_client_id,
+              clientSecret: config.azure_client_secret,
+              tenantId: config.azure_tenant_id,
+            },
+          }
+        }
+      } else {
+        // Standard SQL Server user/password
+        mssqlConfig.user = config.user
+        mssqlConfig.password = config.password
       }
 
       pool = await mssql.connect(mssqlConfig)
