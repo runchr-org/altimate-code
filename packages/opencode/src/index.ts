@@ -123,7 +123,7 @@ let cli = yargs(hideBin(process.argv))
     // altimate_change start - telemetry init
     // Initialize telemetry early so events from MCP, engine, auth are captured.
     // init() is idempotent — safe to call again later in session prompt.
-    Telemetry.init().catch(() => {})
+    Telemetry.init().catch((e) => Log.Default.warn("Telemetry initialization failed", { error: String(e) }))
     // altimate_change end
 
     // altimate_change start - welcome banner on first run after install/upgrade
