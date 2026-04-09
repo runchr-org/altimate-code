@@ -1,7 +1,7 @@
 ---
 name: validate
-description: Run the validation framework against one or more trace IDs, traces in a date range, or all traces in a session
-argument-hint: <trace_id(s) | --from <datetime> --to <datetime> | --session-id <id>>
+description: Run the validation framework against one or more trace IDs, traces in a date range, all traces in a session, or production traces
+argument-hint: <trace_id(s) | --from <datetime> --to <datetime> | --session-id <id> | --production --from <datetime> --to <datetime> [--limit N]>
 allowed-tools: Bash, Read, Write
 ---
 
@@ -11,6 +11,7 @@ Run the validation framework using the provided input. The skill supports:
 - **Single trace**: `/validate <trace_id>`
 - **Date range**: `/validate --from <datetime> --to <datetime> --user-id <user_id>`
 - **Session ID**: `/validate --session-id <session_id>`
+- **Production**: `/validate --production --from <datetime> --to <datetime> [--limit N]` — validates production traces only (no user ID needed), with an optional limit (default 500, max 500)
 
 ---
 
@@ -43,23 +44,25 @@ VALIDATE_SCRIPT="$(find "$PROJECT_ROOT/.altimate-code/skills/validate" "$HOME/.a
 ```
 
 Parse `$ARGUMENTS` to determine the mode and construct the command:
+- If it contains `--production` → production mode: `uv run --with requests python "$VALIDATE_SCRIPT" --project-root "$PROJECT_ROOT" --production --from-time "<from>" --to-time "<to>" --limit <limit>`
+  - Extract `--from` and `--to` values from `$ARGUMENTS`. If `--limit` is not specified, omit it (defaults to 500).
 - If it contains `--session-id` → session mode: `uv run --with requests python "$VALIDATE_SCRIPT" --project-root "$PROJECT_ROOT" --session-id "<session_id>"`
 - If it contains `--from` → date range mode: `uv run --with requests python "$VALIDATE_SCRIPT" --project-root "$PROJECT_ROOT" --from-time "<from>" --to-time "<to>" --user-id "<user_id>"`
 - Otherwise → single trace ID: `uv run --with requests python "$VALIDATE_SCRIPT" --project-root "$PROJECT_ROOT" --trace-ids "$ARGUMENTS"`
 
-Run the command using the Bash tool with `timeout: 3600000` (milliseconds) to allow up to ~60 minutes for long-running validations:
+Run the command using the Bash tool with `timeout: 28800000` (milliseconds) to allow up to ~8 hours for long-running validations:
 
 ```bash
 uv run --with requests python "$VALIDATE_SCRIPT" --project-root "$PROJECT_ROOT" <appropriate_args>
 ```
 
-**IMPORTANT**: Always pass `timeout: 3600000` to the Bash tool when running this command. The default 2-minute bash timeout is too short for validation jobs.
+**IMPORTANT**: Always pass `timeout: 28800000` to the Bash tool when running this command. The default 2-minute bash timeout is too short for validation jobs.
 
 The script will:
 - Call the Altimate backend directly
 - Stream results via SSE as each trace completes
-- Write raw JSON results to `logs/batch_validation_<timestamp>.json`
 - Create a report folder `logs/batch_validation_<timestamp>/`
+- Write raw JSON results to `logs/batch_validation_<timestamp>/batch_validation_<timestamp>.json`
 - Output JSON to stdout
 
 **IMPORTANT**: The stdout output may be very large. Read the output carefully. The JSON structure is:
@@ -77,11 +80,22 @@ The script will:
         "observation_count": N,
         "elapsed_seconds": N,
         "criteria_results": {
-          "Groundedness": {"text_response": "...", "input_tokens": ..., "output_tokens": ..., "total_tokens": ..., "model_name": "..."},
-          "Validity": {"text_response": "...", ...},
-          "Coherence": {"text_response": "...", ...},
-          "Utility": {"text_response": "...", ...},
-          "Tool Validation": {"text_response": "...", ...}
+          "Groundedness": {
+            "text_response": "...",
+            "node_status": "...",
+            "node_score": N,
+            "failed_count": N,
+            "claim_count": N,
+            "claims_psv": "claim_id|claim_text|source_tool_id_reference|input_data|claim_amount|claim_unit|input_claim_conversion_statement|input_transformation_type|status|calculated_claim|error_in_claim|reason\n1|...|...|...|...|...|...|...|SUCCESS|...|...|...\n2|...",
+            "input_tokens": ...,
+            "output_tokens": ...,
+            "total_tokens": ...,
+            "model_name": "..."
+          },
+          "Validity": {"text_response": "...", "node_status": "...", "node_score": N, ...},
+          "Coherence": {"text_response": "...", "node_status": "...", "node_score": N, ...},
+          "Utility": {"text_response": "...", "node_status": "...", "node_score": N, ...},
+          "Tool Validation": {"text_response": "...", "node_status": "...", "node_score": N, ...}
         }
       }
     }
@@ -91,51 +105,32 @@ The script will:
 }
 ```
 
----
+**Groundedness `claims_psv` format** — pipe-separated values with 12 columns:
 
-### Step 2: For Each Trace - Semantic Matching (Groundedness Post-Processing)
+| Column | Name | Description |
+|---|---|---|
+| 1 | `claim_id` | Unique claim identifier |
+| 2 | `claim_text` | The actual claim statement |
+| 3 | `source_tool_id_reference` | Tool ID that provided source data |
+| 4 | `input_data` | Raw data from tool (JSON list) |
+| 5 | `claim_amount` | The claimed value |
+| 6 | `claim_unit` | Unit of the claim |
+| 7 | `input_claim_conversion_statement` | Python formula used to validate |
+| 8 | `input_transformation_type` | Type: mathematical, string_match, or range_match |
+| 9 | `status` | Final result: SUCCESS or FAILURE |
+| 10 | `calculated_claim` | Computed value from formula |
+| 11 | `error_in_claim` | Relative error percentage |
+| 12 | `reason` | Human-readable explanation of the result |
 
-For EACH trace in the results array, apply semantic matching to Groundedness:
-
-1. Parse the `criteria_results.Groundedness.text_response` and identify all **failed claims**.
-2. If there are claims identified:
-    2.1. **For each claim , check whether `claim_text` and `source_data` are semantically the same.
-        - 2 statements are considered **semantically same** if they talk about the same topics.
-           - If the comparison involves numbers then **make sure you compare those numbers properly using tools if needed.**
-        - 2 statements are considered **semantically different** if they talk about different topics.
-        - If semantically same → update claim status to `SUCCESS`.
-    2.2. Re-count the number of failing claims whose status is `FAILURE`.
-    2.3. Update `failed_count` with the re-counted number.
-    2.4. Re-calculate OverallScore as `round(((total length of claims - failed_count)/total length of claims) * 5, 2)`
-3. If no claims identified, do nothing.
-
-**This is being done for semantic matching as the deterministic tool did not do semantic matching.**
-
-When doing this task, first generate a sequence of steps as a plan and execute step by step for consistency.
+**Note:** Semantic matching and reason generation are handled server-side. The `status` and `reason` fields in `claims_psv` already reflect deterministic validation, semantic re-evaluation, and reason generation. No client-side post-processing is needed.
 
 ---
 
-### Step 3: For Each Trace - Semantic Reason Generation (Groundedness Post-Processing)
-
-For EACH trace in the results array, apply semantic reason generation to Groundedness:
-
-1. Parse the `criteria_results.Groundedness.text_response` and identify all **claims**.
-2. If there are claims identified, then **for each claim**:
-    2.1. If claim status is `SUCCESS` → generate a brief and complete reason explaining **why it succeeded** (e.g. the claim matches the source data, the value is within acceptable error, etc.) and update the claim's `reason` field with the generated reason.
-        - REMEMBER to provide full proof details in the reason with tool calculated claims as well as actual claim.
-    2.2. If claim status is `FAILURE` → generate a brief and complete reason explaining **why it failed** (e.g. the claimed value differs from source data, the error exceeds the threshold, etc.) and update the claim's `reason` field with the generated reason.
-        - REMEMBER to provide full proof details in the reason with tool calculated claims as well as actual claim.
-3. If no claims identified, do nothing.
-
-**This ensures every claim has a human-readable, semantically generated reason regardless of its outcome.**
-
-When doing this task, first generate a sequence of steps as a plan and execute step by step for consistency.
-
----
-
-### Step 4: Write Per-Trace Results to File
+### Step 2: Write Per-Trace Results to File
 
 For EACH trace, write the results **directly to a markdown file** inside the report directory. Do NOT print the full trace details to the terminal. Read `report_dir` from the batch_validate.py JSON output. Use the trace index (1-based) and first 12 characters of the trace ID for the filename.
+
+Parse the `claims_psv` string by splitting on newlines (skip the header row) and then splitting each row on `|` to extract the 12 fields.
 
 The file content must follow this format:
 
@@ -146,11 +141,11 @@ The file content must follow this format:
 
 | Criteria | Status | Score |
 |---|---|---|
-| **Groundedness** | <status> | <score>/5 |
-| **Validity** | <status> | <score>/5 |
-| **Coherence** | <status> | <score>/5 |
-| **Utility** | <status> | <score>/5 |
-| **Tool Validation** | <status> | <score>/5 |
+| **Groundedness** | <node_status> | <node_score>/5 |
+| **Validity** | <node_status> | <node_score>/5 |
+| **Coherence** | <node_status> | <node_score>/5 |
+| **Utility** | <node_status> | <node_score>/5 |
+| **Tool Validation** | <node_status> | <node_score>/5 |
 
 P.S. **Consider 'RIGHT NODE' as 'SUCCESS' and 'WRONG NODE' as 'FAILURE' IF PRESENT.**
 
@@ -166,19 +161,19 @@ For **Validity**, **Coherence**, and **Utility**, show a node-level breakdown ta
 
 #### Groundedness
 
-<summary of groundedness response detailing strengths and weaknesses>
+<text_response summary from the server>
 
-ALL claims table:
+ALL claims table (parsed from `claims_psv`):
 
-| # | Source Tool | Source Data | Input Data | Claim Text | Claimed | Input | Conversion Statement | Calculated | Error | Status | Reason |
+| # | Claim Text | Source Tool ID | Input Data | Claimed | Unit | Conversion Statement | Type | Calculated | Error % | Status | Reason |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| <claim_id> | <source tool id> | <claim_text> | <source_data> | <input_data> | <claimed_value> <claim_unit> | <input data> | <input to claim conversion statement> | <Calculated claim> <claim_unit> | <Error in claim as %> | SUCCESS/FAILURE | <reason> |
+| <claim_id> | <claim_text> | <source_tool_id_reference> | <input_data> | <claim_amount> | <claim_unit> | <input_claim_conversion_statement> | <input_transformation_type> | <calculated_claim> | <error_in_claim> | SUCCESS/FAILURE | <reason> |
 
-Failed Claims Summary (only failed claims):
+Failed Claims Summary (only claims with status=FAILURE from `claims_psv`):
 
-| # | Claim | Claimed | Source Tool ID | Actual Text | Actual Data | Error | Root Cause |
+| # | Claim Text | Claimed | Source Tool ID | Input Data | Calculated | Error % | Reason |
 |---|---|---|---|---|---|---|---|
-| <claim_id> | <claim_text> | <claimed_value> | <source_tool_id> | <source_data> | <Input data> | <error %> | <reasoning> |
+| <claim_id> | <claim_text> | <claim_amount> <claim_unit> | <source_tool_id_reference> | <input_data> | <calculated_claim> | <error_in_claim> | <reason> |
 
 REMEMBER to generate each value COMPLETELY. DO NOT TRUNCATE.
 
@@ -208,7 +203,7 @@ After writing each file, tell the user:
 
 ---
 
-### Step 5: Write Cross-Trace Comprehensive Summary to File
+### Step 3: Write Cross-Trace Comprehensive Summary to File
 
 After processing all individual traces, write a comprehensive summary **directly to `<report_dir>/SUMMARY.md`** using the Write tool. Do NOT print the full summary to the terminal.
 
@@ -216,8 +211,6 @@ The file content must follow this format:
 
 ```
 ## Validation Summary
-
-Use the scores AFTER semantic matching corrections from Step 2, and reasons AFTER semantic reason generation from Step 3.
 
 ### Overall Score Summary
 
@@ -242,177 +235,26 @@ For EACH category:
 - **Common Weaknesses**: Recurring issues found across traces
 - **Recommendations**: Actionable improvements based on the analysis
 
-Finally generate all the failed claims in the below markdown format from all the traces
+Finally generate all the failed claims in the below markdown format from all the traces (parsed from `claims_psv` where status=FAILURE):
 
-| # | Trace ID |Claim | Claimed | Source Tool ID | Actual Text | Actual Data | Error | Root Cause |
+| # | Trace ID | Claim Text | Claimed | Source Tool ID | Input Data | Calculated | Error % | Reason |
 |---|---|---|---|---|---|---|---|---|
-| <claim_id> | <trace_id>| <claim_text> | <claimed_value> | <source_tool_id> | <source_data> | <Input data> | <error %> | <reasoning> |
+| <claim_id> | <trace_id> | <claim_text> | <claim_amount> <claim_unit> | <source_tool_id_reference> | <input_data> | <calculated_claim> | <error_in_claim> | <reason> |
 
 REMEMBER that no claim should be truncated. ALL THE VALUES MUST BE COMPLETE.
 
 ```
-
-
 
 After writing the file, tell the user:
 > Summary written to `<report_dir>/SUMMARY.md`
 
 ---
 
-### Step 6: Write Dashboard to File
+### Step 4: Write Groundedness Failure Categories to File
 
-After writing the summary, generate a dashboard and write it **directly to `<report_dir>/DASHBOARD.html`** as a self-contained HTML file using the Write tool.
+After writing the summary, analyse all failed Groundedness claims across every trace and group them into failure categories. Write the result **directly to `<report_dir>/GROUNDEDNESS_FAILURES.md`** using the Write tool.
 
-The dashboard provides an at-a-glance health view across all traces. Use the scores AFTER semantic matching corrections from Step 2.
-
-Generate a complete, self-contained HTML file with inline CSS and no external dependencies. The design should be clean and professional — dark header, card-based layout, color-coded status indicators. Use the following structure as the template, substituting all placeholder values with real computed data:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Validation Dashboard</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f6f9; color: #1a1a2e; }
-  header { background: #1a1a2e; color: #fff; padding: 24px 32px; display: flex; align-items: center; gap: 16px; }
-  header h1 { font-size: 1.5rem; font-weight: 600; }
-  header .meta { font-size: 0.85rem; color: #a0aec0; margin-top: 4px; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 32px; }
-  .section-title { font-size: 1.1rem; font-weight: 600; color: #2d3748; margin-bottom: 16px; border-left: 4px solid #4299e1; padding-left: 12px; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }
-  .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-  .card .label { font-size: 0.78rem; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; }
-  .card .value { font-size: 1.8rem; font-weight: 700; margin: 6px 0 2px; }
-  .card .sub { font-size: 0.8rem; color: #a0aec0; }
-  .green { color: #38a169; } .yellow { color: #d69e2e; } .red { color: #e53e3e; }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-  .badge.green { background: #c6f6d5; color: #276749; }
-  .badge.yellow { background: #fefcbf; color: #7b341e; }
-  .badge.red { background: #fed7d7; color: #9b2c2c; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 32px; }
-  th { background: #edf2f7; text-align: left; padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #4a5568; }
-  td { padding: 12px 16px; font-size: 0.875rem; border-top: 1px solid #edf2f7; }
-  tr:hover td { background: #f7fafc; }
-  .score-bar { display: flex; align-items: center; gap: 8px; }
-  .bar-track { flex: 1; height: 6px; background: #edf2f7; border-radius: 3px; }
-  .bar-fill { height: 6px; border-radius: 3px; }
-  .issue-tag { background: #ebf8ff; color: #2b6cb0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-right: 4px; }
-</style>
-</head>
-<body>
-<header>
-  <div>
-    <h1>Validation Dashboard</h1>
-    <div class="meta">Generated: <TIMESTAMP> &nbsp;·&nbsp; Traces evaluated: <TOTAL_TRACES></div>
-  </div>
-</header>
-<div class="container">
-
-  <!-- Overall Health Cards -->
-  <div class="section-title">Overall Health</div>
-  <div class="cards">
-    <div class="card">
-      <div class="label">Overall Avg Score</div>
-      <div class="value <GREEN_YELLOW_RED>"><OVERALL_AVG>/5</div>
-      <div class="sub">across all criteria</div>
-    </div>
-    <div class="card">
-      <div class="label">Traces Evaluated</div>
-      <div class="value"><TOTAL_TRACES></div>
-      <div class="sub">&nbsp;</div>
-    </div>
-    <div class="card">
-      <div class="label">Fully Passing</div>
-      <div class="value green"><PASSING_COUNT></div>
-      <div class="sub"><PASSING_PCT>% of traces</div>
-    </div>
-    <div class="card">
-      <div class="label">Has Failures</div>
-      <div class="value red"><FAILING_COUNT></div>
-      <div class="sub"><FAILING_PCT>% of traces</div>
-    </div>
-    <div class="card">
-      <div class="label">Failed Claims</div>
-      <div class="value red"><TOTAL_FAILED_CLAIMS></div>
-      <div class="sub">Groundedness</div>
-    </div>
-  </div>
-
-  <!-- Criteria Scorecard -->
-  <div class="section-title">Criteria Scorecard</div>
-  <table>
-    <thead><tr><th>Criteria</th><th>Avg Score</th><th>Score Bar</th><th>Pass Rate</th><th>Status</th></tr></thead>
-    <tbody>
-      <!-- Repeat one <tr> per criteria. bar-fill width = (avg/5)*100 %. Color class on bar-fill and badge matches status. -->
-      <tr>
-        <td><strong>Groundedness</strong></td>
-        <td><GROUND_AVG>/5</td>
-        <td><div class="score-bar"><div class="bar-track"><div class="bar-fill <COLOR>" style="width:<GROUND_PCT>%"></div></div></div></td>
-        <td><GROUND_PASS_RATE>%</td>
-        <td><span class="badge <COLOR>"><STATUS></span></td>
-      </tr>
-      <!-- ... Validity, Coherence, Utility, Tool Validation rows ... -->
-    </tbody>
-  </table>
-
-  <!-- Top Issues -->
-  <div class="section-title">Top Issues</div>
-  <table>
-    <thead><tr><th>#</th><th>Issue</th><th>Criteria</th><th>Affected Traces</th></tr></thead>
-    <tbody>
-      <!-- One row per top issue, up to 5 -->
-      <tr>
-        <td>1</td>
-        <td><ISSUE_DESCRIPTION></td>
-        <td><span class="issue-tag"><CRITERIA></span></td>
-        <td><TRACE_IDS></td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Per-Trace Health -->
-  <div class="section-title">Per-Trace Health</div>
-  <table>
-    <thead><tr><th>Trace ID</th><th>Overall</th><th>Groundedness</th><th>Validity</th><th>Coherence</th><th>Utility</th><th>Tool Validation</th></tr></thead>
-    <tbody>
-      <!-- One row per trace -->
-      <tr>
-        <td style="font-family:monospace;font-size:0.8rem"><TRACE_ID></td>
-        <td><span class="badge <COLOR>"><AVG>/5</span></td>
-        <td><GROUND>/5</td>
-        <td><VALID>/5</td>
-        <td><COHER>/5</td>
-        <td><UTIL>/5</td>
-        <td><TOOLVAL>/5</td>
-      </tr>
-    </tbody>
-  </table>
-
-</div>
-</body>
-</html>
-```
-
-**Color rules:**
-- Score ≥ 4.0 → class `green`
-- Score 2.5–3.9 → class `yellow`
-- Score < 2.5 → class `red`
-
-Pass rate = % of traces scoring ≥ 3.0 for that criteria. Fully passing = all criteria ≥ 3.0.
-
-After writing the file, tell the user:
-> Dashboard written to `<report_dir>/DASHBOARD.html`
-
----
-
-### Step 7: Write Groundedness Failure Categories to File
-
-After writing the dashboard, analyse all failed Groundedness claims across every trace and group them into failure categories. Write the result **directly to `<report_dir>/GROUNDEDNESS_FAILURES.md`** using the Write tool.
-
-To derive categories, read the `Root Cause` / `reason` fields from every failed claim across all traces and group semantically similar failures under a single category label (e.g. "Unit Conversion Error", "Wrong Metric Used", "Rounding Error", "Missing Data", "Calculation Error", etc.).
+To derive categories, read the `reason` fields from every failed claim (status=FAILURE in `claims_psv`) across all traces and group semantically similar failures under a single category label (e.g. "Unit Conversion Error", "Wrong Metric Used", "Rounding Error", "Missing Data", "Calculation Error", etc.).
 
 The file content must follow this format:
 
@@ -436,12 +278,190 @@ For each category, list every failed claim that belongs to it:
 
 **Description:** <one-sentence explanation of what this category of failure represents>
 
-| # | Trace ID | Claim | Claimed | Actual | Error | Reason |
+| # | Trace ID | Claim Text | Claimed | Calculated | Error % | Reason |
 |---|---|---|---|---|---|---|
-| <claim_id> | <trace_id> | <claim_text> | <claimed_value> | <actual_value> | <error_%> | <reason> |
+| <claim_id> | <trace_id> | <claim_text> | <claim_amount> <claim_unit> | <calculated_claim> | <error_in_claim> | <reason> |
 ```
 
 REMEMBER: every failed claim from every trace must appear in exactly one category. No claim should be omitted or truncated.
 
 After writing the file, tell the user:
 > Groundedness failure categories written to `<report_dir>/GROUNDEDNESS_FAILURES.md`
+
+---
+
+### Step 5: Write Visual Dashboard to File
+
+After writing the failure categories, generate a **self-contained HTML dashboard** and write it **directly to `<report_dir>/DASHBOARD.html`** using the Write tool. No external dependencies — all CSS, SVG charts, and JavaScript must be inline.
+
+The dashboard serves two audiences: **executives** (CTO, founders, sales) who glance at the top, and **engineers** who drill into details. Structure accordingly: verdict at the top, proof at the bottom.
+
+---
+
+#### 5.1 Model Pricing Lookup
+
+Use this table to compute costs from `model_name`, `input_tokens`, and `output_tokens` in each criteria result:
+
+| Model (match substring) | Input (per 1M tokens) | Output (per 1M tokens) |
+|---|---|---|
+| `claude-sonnet` | $3.00 | $15.00 |
+| `claude-haiku` | $0.80 | $4.00 |
+| `claude-opus` | $15.00 | $75.00 |
+| `gpt-4o-mini` | $0.15 | $0.60 |
+| `gpt-4o` | $2.50 | $10.00 |
+| `gpt-4.1` | $2.00 | $8.00 |
+| `gpt-4.1-mini` | $0.40 | $1.60 |
+| `gpt-4.1-nano` | $0.10 | $0.40 |
+| `o3` | $2.00 | $8.00 |
+| `o3-mini` | $1.10 | $4.40 |
+| `o4-mini` | $1.10 | $4.40 |
+
+**Cost formula:** `cost = (input_tokens / 1_000_000) * input_price + (output_tokens / 1_000_000) * output_price`
+
+If `model_name` does not match any known model, show token counts but display cost as "N/A".
+
+---
+
+#### 5.2 Dashboard Layout
+
+Generate the HTML following this exact section order. Use a clean, professional design: dark header (`#1a1a2e`), light body (`#f4f6f9`), card-based layout, consistent color system throughout.
+
+**Color system for scores:**
+- Score >= 4.0 → green (`#38a169` / `#c6f6d5`)
+- Score 2.5–3.9 → yellow (`#d69e2e` / `#fefcbf`)
+- Score < 2.5 → red (`#e53e3e` / `#fed7d7`)
+
+**Pass rate** = % of traces scoring >= 3.0 for that criteria. **Fully passing** = all 5 criteria >= 3.0 for that trace.
+
+---
+
+##### Section 1: Executive Banner
+
+Dark header bar containing:
+- **Title**: "Validation Dashboard"
+- **Timestamp**: generation time
+- **Traces evaluated**: total count
+- **Overall verdict**: one-line summary, e.g. "4/5 traces fully passing — 1 trace has groundedness issues"
+- **Total evaluation cost**: sum of all criteria across all traces, formatted as `$X.XX`
+
+##### Section 2: Radar Chart — Criteria Averages
+
+An inline SVG radar/spider chart with 5 axes (Groundedness, Validity, Coherence, Utility, Tool Validation). Plot the average score for each criteria across all traces. The chart should:
+- Use a regular pentagon for the 5-axis grid with concentric rings at 1, 2, 3, 4, 5
+- Fill the scored area with a semi-transparent blue (`rgba(66, 153, 225, 0.3)`) and a solid blue stroke
+- Label each axis with the criteria name and its average score
+- Be centered, approximately 400x400px
+
+If there are multiple traces, overlay each trace as a separate semi-transparent polygon (different colors) with a legend below.
+
+##### Section 3: Criteria Heatmap Table
+
+A table where:
+- **Rows** = traces (show first 12 chars of trace ID in monospace)
+- **Columns** = Groundedness, Validity, Coherence, Utility, Tool Validation
+- **Cells** = score value with background color (green/yellow/red gradient)
+- Last row = **Average** across all traces (bold)
+
+This gives the full matrix at a glance.
+
+##### Section 4: Cost & Token Breakdown
+
+**4a — Summary cards row:**
+- Total Input Tokens (formatted with commas)
+- Total Output Tokens (formatted with commas)
+- Total Tokens (formatted with commas)
+- Total Cost (`$X.XX`)
+
+**4b — Per-criteria cost table:**
+
+| Criteria | Model | Input Tokens | Output Tokens | Total Tokens | Cost |
+|---|---|---|---|---|---|
+| Groundedness | <model_name> | <input_tokens> | <output_tokens> | <total_tokens> | $X.XX |
+| Validity | ... | ... | ... | ... | ... |
+| Coherence | ... | ... | ... | ... | ... |
+| Utility | ... | ... | ... | ... | ... |
+| Tool Validation | ... | ... | ... | ... | ... |
+| **Total** | | **...** | **...** | **...** | **$X.XX** |
+
+If multiple traces, show the **aggregate** table above, then a **collapsible per-trace breakdown** below it.
+
+**4c — Stacked bar chart (inline SVG):**
+- One bar per criteria
+- Each bar split into input tokens (lighter shade) and output tokens (darker shade)
+- X-axis labels = criteria names, Y-axis = token count
+- Legend: "Input Tokens" / "Output Tokens"
+- Approximately 600px wide, 250px tall
+
+##### Section 5: Groundedness Deep-Dive (collapsible)
+
+Wrap in a `<details>` tag, open by default.
+
+**5a — Donut chart (inline SVG):**
+- Two segments: passed claims (green) vs failed claims (red)
+- Center text: "X/Y passed" or pass percentage
+- Approximately 200x200px, positioned left with stats to the right
+
+**5b — Failed claims table:**
+Only claims with `status=FAILURE` from `claims_psv` across all traces:
+
+| # | Trace ID | Claim Text | Claimed | Calculated | Error % | Reason |
+|---|---|---|---|---|---|---|
+
+If no failed claims, show a green banner: "All claims passed validation."
+
+**5c — Failure categories summary:**
+If there are failed claims, show a compact category table (from Step 4 data):
+
+| Category | Count | Affected Traces |
+|---|---|---|
+
+##### Section 6: Per-Criteria Summaries (each collapsible)
+
+For **Validity**, **Coherence**, **Utility**, and **Tool Validation**, generate a `<details>` section (collapsed by default) containing:
+- Score bar: a horizontal progress bar (width = score/5 * 100%), color-coded
+- Node-level breakdown table (if available): Node | Score | Status
+- Key findings: 2-3 bullet points summarizing strengths/weaknesses from `text_response`
+
+For **Tool Validation** specifically, also include the tool details table:
+
+| # | Tool Name | Tool Status |
+|---|---|---|
+
+##### Section 7: Per-Trace Detail (each collapsible)
+
+For each trace, generate a `<details>` section (collapsed by default) containing:
+- Trace ID (monospace)
+- Mini scorecard: 5 criteria as inline colored badges
+- Token usage for this trace: small table with criteria | model | tokens | cost
+- Full Groundedness claims table (all 12 PSV columns)
+- `text_response` summaries for each criteria
+
+---
+
+#### 5.3 Styling Requirements
+
+The `<style>` block must include:
+
+```
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f6f9; color: #1a1a2e; }
+```
+
+Additional requirements:
+- **Cards**: `background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);`
+- **Section titles**: left border accent (`border-left: 4px solid #4299e1`), uppercase label style
+- **Tables**: full-width, collapsed borders, alternating row hover, sticky header
+- **Badges**: pill-shaped (`border-radius: 999px`), colored by score
+- **`<details>`/`<summary>`**: styled as expandable cards with chevron indicator, cursor pointer
+- **Print-friendly**: add `@media print` rules that expand all `<details>`, hide decorative elements, use black text
+- **Responsive**: cards grid uses `repeat(auto-fit, minmax(180px, 1fr))`
+- **Number formatting**: use commas for thousands in token counts
+
+---
+
+#### 5.4 Output
+
+Write the complete HTML file using the Write tool to `<report_dir>/DASHBOARD.html`.
+
+After writing the file, tell the user:
+> Dashboard written to `<report_dir>/DASHBOARD.html`

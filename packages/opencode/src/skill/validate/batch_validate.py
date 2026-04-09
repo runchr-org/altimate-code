@@ -202,6 +202,19 @@ def validate_session(session_id):
     return _stream_post(f"{BASE_URL}/validate/session", {"session_id": session_id}, timeout=600)
 
 
+def validate_production(from_datetime, to_datetime, limit=500):
+    """Call POST /validate/production. Returns list of result dicts."""
+    print(
+        f"Validating production traces from {from_datetime} to {to_datetime} (limit {limit})...",
+        file=sys.stderr,
+    )
+    return _stream_post(
+        f"{BASE_URL}/validate/production",
+        {"from_datetime": from_datetime, "to_datetime": to_datetime, "limit": limit},
+        timeout=600,
+    )
+
+
 def _log_event(event):
     """Print progress events to stderr."""
     name = event.get("event", "")
@@ -281,6 +294,17 @@ def main():
         help="Session ID to validate all traces for",
     )
     parser.add_argument(
+        "--production",
+        action="store_true",
+        help="Validate production traces (requires --from-time and --to-time)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=500,
+        help="Max traces to validate in production mode (default: 500, max: 500)",
+    )
+    parser.add_argument(
         "--output",
         help="Output log file path (defaults to logs/batch_validation_<timestamp>.json)",
     )
@@ -304,7 +328,13 @@ def main():
     # Dispatch to the correct mode
     raw_results = []
 
-    if args.session_id:
+    if args.production:
+        if not args.from_time or not args.to_time:
+            print("ERROR: --production requires --from-time and --to-time.", file=sys.stderr)
+            sys.exit(1)
+        raw_results = validate_production(args.from_time, args.to_time, args.limit)
+
+    elif args.session_id:
         raw_results = validate_session(args.session_id)
 
     elif args.from_time and args.to_time:
@@ -328,9 +358,9 @@ def main():
 
     # Build output
     timestamp = datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
-    log_file = args.output or str(LOG_DIR / f"batch_validation_{timestamp}.json")
     report_dir = str(LOG_DIR / f"batch_validation_{timestamp}")
     Path(report_dir).mkdir(exist_ok=True)
+    log_file = args.output or str(Path(report_dir) / f"batch_validation_{timestamp}.json")
 
     output = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
