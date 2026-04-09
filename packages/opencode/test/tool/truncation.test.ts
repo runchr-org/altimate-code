@@ -119,6 +119,50 @@ describe("Truncate", () => {
       if (result.truncated) throw new Error("expected not truncated")
       expect("outputPath" in result).toBe(false)
     })
+
+    test("truncates correctly with multi-byte UTF-8 characters", async () => {
+      // Each emoji is 4 bytes in UTF-8. 10 emojis + 9 newlines = 49 bytes
+      // With maxBytes=30, byte limit triggers mid-way through the lines
+      const lines = Array.from({ length: 10 }, () => "🔥").join("\n")
+      const result = await Truncate.output(lines, { maxBytes: 30 })
+
+      expect(result.truncated).toBe(true)
+      expect(result.content).toContain("🔥")
+      expect(result.content).toContain("bytes truncated...")
+      if (result.truncated) {
+        const written = await Filesystem.readText(result.outputPath)
+        expect(written).toBe(lines) // Full content preserved in file
+      }
+    })
+
+    test("tail direction with multi-byte characters hits byte limit", async () => {
+      // 10 lines of "你好" (6 bytes each), plus 9 newlines = 69 total bytes
+      // maxBytes=25 triggers byte limit from the tail end
+      const lines = Array.from({ length: 10 }, () => "你好").join("\n")
+      const result = await Truncate.output(lines, { maxBytes: 25, direction: "tail" })
+
+      expect(result.truncated).toBe(true)
+      expect(result.content).toContain("你好")
+      expect(result.content).toContain("bytes truncated...")
+      // Tail direction: truncation message comes BEFORE the preview
+      expect(result.content).toMatch(/bytes truncated.*你好/s)
+    })
+
+    test("line limit wins when it triggers before byte limit", async () => {
+      // 50 lines of 9 bytes each (total ~499 bytes with newlines)
+      // maxLines=5 triggers first; maxBytes=600 is never reached
+      const lines = Array.from({ length: 50 }, (_, i) => `row-${String(i).padStart(5, "0")}`).join("\n")
+      const result = await Truncate.output(lines, { maxLines: 5, maxBytes: 600 })
+
+      expect(result.truncated).toBe(true)
+      // Line limit triggered, so unit should be "lines" not "bytes"
+      expect(result.content).toContain("45 lines truncated...")
+      expect(result.content).not.toContain("bytes truncated")
+      // Head direction: first 5 lines should be present
+      expect(result.content).toContain("row-00000")
+      expect(result.content).toContain("row-00004")
+      expect(result.content).not.toContain("row-00005")
+    })
   })
 
 })
