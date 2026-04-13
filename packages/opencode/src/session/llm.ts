@@ -157,7 +157,7 @@ export namespace LLM {
     // Fixes: https://github.com/AltimateAI/altimate-code/issues/678
     const referencedTools = toolNamesFromMessages(input.messages)
     for (const name of referencedTools) {
-      if (!tools[name]) {
+      if (!Object.hasOwn(tools, name)) {
         tools[name] = tool({
           description: `[Historical] Tool no longer available in this session`,
           inputSchema: jsonSchema({ type: "object", properties: {} }),
@@ -267,18 +267,6 @@ export namespace LLM {
     return input.tools
   }
 
-  // Check if messages contain any tool-call content
-  // Used to determine if a dummy tool should be added for LiteLLM proxy compatibility
-  export function hasToolCalls(messages: ModelMessage[]): boolean {
-    for (const msg of messages) {
-      if (!Array.isArray(msg.content)) continue
-      for (const part of msg.content) {
-        if (part.type === "tool-call" || part.type === "tool-result") return true
-      }
-    }
-    return false
-  }
-
   // altimate_change start — collect tool names from message history to prevent API validation errors
   // Anthropic API requires every tool_use block in message history to have a matching tool
   // definition. When agents switch (e.g. Plan→Builder) or MCP tools disconnect, the history
@@ -289,7 +277,7 @@ export namespace LLM {
     for (const msg of messages) {
       if (!Array.isArray(msg.content)) continue
       for (const part of msg.content) {
-        if (part.type === "tool-call") names.add(part.toolName)
+        if (part.type === "tool-call" || part.type === "tool-result") names.add(part.toolName)
       }
     }
     return names
