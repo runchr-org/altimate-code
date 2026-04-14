@@ -81,6 +81,23 @@ describe("ConnectionRegistry", () => {
     await expect(Registry.get("mydb")).rejects.toThrow("Supported:")
   })
 
+  test("fabric type is recognized in DRIVER_MAP and routes to sqlserver driver", () => {
+    Registry.setConfigs({
+      fabricdb: {
+        type: "fabric",
+        host: "myserver.datawarehouse.fabric.microsoft.com",
+        database: "migration",
+        authentication: "default",
+      },
+    })
+    const config = Registry.getConfig("fabricdb")
+    expect(config).toBeDefined()
+    expect(config?.type).toBe("fabric")
+    const result = Registry.list()
+    expect(result.warehouses).toHaveLength(1)
+    expect(result.warehouses[0].type).toBe("fabric")
+  })
+
   test("getConfig returns config for known connection", () => {
     Registry.setConfigs({
       mydb: { type: "postgres", host: "localhost" },

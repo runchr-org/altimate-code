@@ -463,6 +463,19 @@ describe("normalizeConfig — SQL Server", () => {
     expect(result.host).toBe("myserver")
     expect(result.user).toBe("sa")
   })
+
+  test("fabric type uses SQLSERVER_ALIASES", () => {
+    const result = normalizeConfig({
+      type: "fabric",
+      server: "myserver.datawarehouse.fabric.microsoft.com",
+      trustServerCertificate: false,
+      authentication: "default",
+    })
+    expect(result.host).toBe("myserver.datawarehouse.fabric.microsoft.com")
+    expect(result.server).toBeUndefined()
+    expect(result.trust_server_certificate).toBe(false)
+    expect(result.trustServerCertificate).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------

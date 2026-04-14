@@ -420,4 +420,37 @@ describe("SQL Server driver unit tests", () => {
       expect(result.columns).toEqual(["id", "_p", "name"])
     })
   })
+
+  // --- Unnamed column flattening ---
+
+  describe("unnamed column flattening", () => {
+    test("flattens unnamed columns merged under empty-string key", async () => {
+      // mssql merges SELECT COUNT(*), SUM(amount) into row[""] = [42, 1000]
+      mockQueryResult = {
+        recordset: [{ "": [42, 1000] }],
+      }
+      const result = await connector.execute("SELECT COUNT(*), SUM(amount) FROM t")
+      expect(result.rows).toEqual([[42, 1000]])
+      expect(result.columns).toEqual(["col_0", "col_1"])
+    })
+
+    test("preserves legitimate array values from named columns", async () => {
+      // A named column containing an array (e.g. from JSON aggregation)
+      // should NOT be spread — only the empty-string key gets flattened
+      mockQueryResult = {
+        recordset: [{ id: 1, tags: ["a", "b", "c"] }],
+      }
+      const result = await connector.execute("SELECT * FROM t")
+      expect(result.columns).toEqual(["id", "tags"])
+      expect(result.rows).toEqual([[1, ["a", "b", "c"]]])
+    })
+
+    test("handles mix of named and unnamed columns", async () => {
+      mockQueryResult = {
+        recordset: [{ name: "alice", "": [42] }],
+      }
+      const result = await connector.execute("SELECT * FROM t")
+      expect(result.rows).toEqual([["alice", 42]])
+    })
+  })
 })
