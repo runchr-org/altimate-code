@@ -34,7 +34,7 @@ You need one of the following:
     ```
 
     !!! tip
-        If your organization uses the Altimate Code TUI, you can store the token via `altimate-code auth amazon-bedrock` instead of exporting it in your shell profile.
+        If your organization uses the Altimate Code TUI, you can store the token via `altimate-code auth login --provider amazon-bedrock` instead of exporting it in your shell profile.
 
 === "AWS Credential Chain"
 
@@ -107,19 +107,23 @@ The status bar should display your selected model under Amazon Bedrock.
 
 ## Cross-region model ID prefixing
 
-Altimate Code automatically prepends a region prefix to model IDs for cross-region inference. For example, with `region: "us-east-1"` the model ID `anthropic.claude-sonnet-4-6-v1` is sent to the gateway as `us.anthropic.claude-sonnet-4-6-v1`.
+Altimate Code may prepend a region prefix to model IDs for cross-region inference when the selected model and region require it. For example, with `region: "us-east-1"` the model ID `anthropic.claude-sonnet-4-6-v1` is sent to the gateway as `us.anthropic.claude-sonnet-4-6-v1`.
 
-| Your region | Prefix applied |
-|-------------|---------------|
-| `us-*` (except GovCloud) | `us.` |
-| `eu-*` | `eu.` |
-| `ap-northeast-1` (Tokyo) | `jp.` |
-| `ap-southeast-2`, `ap-southeast-4` (Australia) | `au.` |
-| Other `ap-*` | `apac.` |
+Prefixing is conditional on **both** the region and the model family:
 
-**If your gateway expects the prefixed ID** (e.g., `us.anthropic.claude-sonnet-4-6-v1`), no changes are needed — this is the default behavior.
+| Your region | Prefix | Models prefixed |
+|-------------|--------|-----------------|
+| `us-*` (except GovCloud) | `us.` | Claude, Nova, DeepSeek |
+| `eu-*` | `eu.` | Claude, Nova Lite/Micro, Llama 3, Pixtral |
+| `ap-northeast-1` (Tokyo) | `jp.` | Claude, Nova Lite/Micro/Pro |
+| `ap-southeast-2`, `ap-southeast-4` (Australia) | `au.` | Claude Sonnet 4.5, Claude Haiku |
+| Other `ap-*` | `apac.` | Claude, Nova Lite/Micro/Pro |
 
-**If your gateway expects the unprefixed ID**, include the prefix in the model name yourself to skip auto-prefixing:
+Models not listed in the table for a given region are **not** prefixed.
+
+**If your gateway expects the prefixed ID** (e.g., `us.anthropic.claude-sonnet-4-6-v1`), no changes are needed — this is the default behavior for supported models.
+
+**If your gateway handles routing independently and expects the bare model ID**, you can force a specific model ID by including a recognized prefix yourself:
 
 ```json
 {
@@ -127,7 +131,10 @@ Altimate Code automatically prepends a region prefix to model IDs for cross-regi
 }
 ```
 
-When the model ID already starts with a recognized prefix (`us.`, `eu.`, `global.`, `jp.`, `apac.`, `au.`), auto-prefixing is skipped and the ID is passed through as-is.
+When the model ID already starts with a recognized prefix (`us.`, `eu.`, `global.`, `jp.`, `apac.`, `au.`), auto-prefixing is skipped and the ID is passed through as-is. Note that this does **not** strip the prefix — the full prefixed ID is what gets sent to the gateway.
+
+!!! warning
+    There is currently no config option to disable auto-prefixing entirely. If your gateway requires bare (unprefixed) model IDs and the model would normally be prefixed, contact your platform team or open an issue.
 
 ## Troubleshooting
 
@@ -145,7 +152,7 @@ Look for these lines in the logs (`~/.local/share/altimate-code/log/*.log`):
 
 | Log line | Meaning |
 |----------|---------|
-| `service=config path=...altimate-code.json loading` | Config file is being read |
+| `service=config loading config from ...altimate-code.json` | Config file is being read |
 | `service=provider providerID=amazon-bedrock found` | Provider detected successfully |
 | `service=provider providerID=amazon-bedrock` + error | Auth or endpoint failure |
 

@@ -84,7 +84,7 @@ Available models: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-2025
 }
 ```
 
-Uses the standard AWS credential chain. Set `AWS_PROFILE` or provide credentials directly.
+Uses the standard AWS credential chain: environment variables (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`), named profiles (`AWS_PROFILE`), SSO sessions, IAM roles, and container credentials.
 
 !!! note
     If you have AWS SSO, IAM roles, or environment credentials (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) configured, Bedrock will use your default credential chain automatically.
@@ -330,8 +330,8 @@ The `small_model` is used for lightweight tasks like summarization and context c
 | `baseURL` | `string` | Custom API endpoint URL |
 | `api` | `string` | API type (e.g., `"openai"` for compatible endpoints) |
 | `headers` | `object` | Custom HTTP headers to include with requests |
-| `region` | `string` | AWS region (Bedrock only) |
-| `accessKeyId` | `string` | AWS access key (Bedrock only) |
-| `secretAccessKey` | `string` | AWS secret key (Bedrock only) |
+| `options.region` | `string` | AWS region (Amazon Bedrock only, default: `us-east-1`) |
+| `options.profile` | `string` | AWS named profile (Amazon Bedrock only) |
+| `options.baseURL` | `string` | Custom endpoint URL for Bedrock gateway/proxy (Amazon Bedrock only) |
 | `project` | `string` | GCP project ID (Google Vertex AI only) |
 | `location` | `string` | GCP region (Google Vertex AI only, default: `us-central1`) |
