@@ -54,24 +54,60 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       const authType = rawAuth ? (AUTH_SHORTHANDS[rawAuth.toLowerCase()] ?? rawAuth) : undefined
 
       if (authType?.startsWith("azure-active-directory")) {
-        // Azure AD / Entra ID — tedious handles credential creation internally.
-        // We pass the type + options; tedious imports @azure/identity itself.
-        // Verify @azure/identity is available before attempting Azure AD auth.
-        try {
-          await import("@azure/identity")
-        } catch {
-          throw new Error(
-            "Azure AD authentication requires @azure/identity. Run: npm install @azure/identity",
-          )
-        }
         ;(mssqlConfig.options as any).encrypt = true
 
         if (authType === "azure-active-directory-default") {
+          // Acquire a token ourselves and pass it as a raw access token string.
+          // We avoid using @azure/identity's DefaultAzureCredential because:
+          //  1. Bun can resolve @azure/identity to the browser bundle (inside
+          //     tedious or even our own import), where DefaultAzureCredential
+          //     is a non-functional stub that throws.
+          //  2. Passing a credential object via type:"token-credential" hits a
+          //     CJS/ESM isTokenCredential boundary mismatch in Bun.
+          //
+          // Strategy: try @azure/identity first (works when module resolution
+          // is correct), fall back to shelling out to `az account get-access-token`
+          // (works everywhere Azure CLI is installed).
+          let token: string | undefined
+
+          // Attempt 1: @azure/identity (fast, no subprocess)
+          try {
+            const azureIdentity = await import("@azure/identity")
+            const credential = new azureIdentity.DefaultAzureCredential(
+              config.azure_client_id
+                ? { managedIdentityClientId: config.azure_client_id as string }
+                : undefined,
+            )
+            const tokenResponse = await credential.getToken("https://database.windows.net/.default")
+            token = tokenResponse?.token
+          } catch {
+            // @azure/identity unavailable or browser bundle — fall through
+          }
+
+          // Attempt 2: Azure CLI subprocess (universal fallback)
+          if (!token) {
+            try {
+              const { execSync } = await import("node:child_process")
+              const json = execSync(
+                "az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv",
+                { encoding: "utf-8", timeout: 15000, stdio: ["pipe", "pipe", "pipe"] },
+              ).trim()
+              if (json) token = json
+            } catch {
+              // az CLI not installed or not logged in
+            }
+          }
+
+          if (!token) {
+            throw new Error(
+              "Azure AD default auth failed. Either install @azure/identity (npm install @azure/identity) " +
+              "or log in with Azure CLI (az login).",
+            )
+          }
+
           mssqlConfig.authentication = {
-            type: "azure-active-directory-default",
-            options: {
-              ...(config.azure_client_id ? { clientId: config.azure_client_id as string } : {}),
-            },
+            type: "azure-active-directory-access-token",
+            options: { token },
           }
         } else if (authType === "azure-active-directory-password") {
           mssqlConfig.authentication = {

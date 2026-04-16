@@ -65,6 +65,18 @@ mock.module("mssql", () => ({
   },
 }))
 
+mock.module("@azure/identity", () => ({
+  DefaultAzureCredential: class {
+    _opts: any
+    constructor(opts?: any) { this._opts = opts }
+    async getToken(_scope: string) { return { token: "mock-azure-token-12345", expiresOnTimestamp: Date.now() + 3600000 } }
+  },
+}))
+
+mock.module("node:child_process", () => ({
+  execSync: (_cmd: string) => "mock-cli-token-fallback\n",
+}))
+
 // Import after mocking
 const { connect } = await import("../src/sqlserver")
 
@@ -250,7 +262,7 @@ describe("SQL Server driver unit tests", () => {
       })
     })
 
-    test("azure-active-directory-default passes type to tedious (no credential object)", async () => {
+    test("azure-active-directory-default acquires token and passes as access-token", async () => {
       resetMocks()
       const c = await connect({
         host: "myserver.database.windows.net",
@@ -259,11 +271,11 @@ describe("SQL Server driver unit tests", () => {
       })
       await c.connect()
       const cfg = mockConnectCalls[0]
-      expect(cfg.authentication.type).toBe("azure-active-directory-default")
-      expect(cfg.authentication.options.credential).toBeUndefined()
+      expect(cfg.authentication.type).toBe("azure-active-directory-access-token")
+      expect(cfg.authentication.options.token).toBe("mock-azure-token-12345")
     })
 
-    test("azure-active-directory-default with client_id passes clientId option", async () => {
+    test("azure-active-directory-default with client_id passes managedIdentityClientId to credential", async () => {
       resetMocks()
       const c = await connect({
         host: "myserver.database.windows.net",
@@ -273,8 +285,9 @@ describe("SQL Server driver unit tests", () => {
       })
       await c.connect()
       const cfg = mockConnectCalls[0]
-      expect(cfg.authentication.type).toBe("azure-active-directory-default")
-      expect(cfg.authentication.options.clientId).toBe("mi-client-id")
+      // Token is still passed as access-token regardless of client_id
+      expect(cfg.authentication.type).toBe("azure-active-directory-access-token")
+      expect(cfg.authentication.options.token).toBe("mock-azure-token-12345")
     })
 
     test("encryption forced for all Azure AD connections", async () => {
@@ -299,7 +312,7 @@ describe("SQL Server driver unit tests", () => {
       expect(cfg.options.encrypt).toBe(false)
     })
 
-    test("'CLI' shorthand maps to azure-active-directory-default", async () => {
+    test("'CLI' shorthand acquires token via DefaultAzureCredential", async () => {
       resetMocks()
       const c = await connect({
         host: "myserver.datawarehouse.fabric.microsoft.com",
@@ -308,7 +321,8 @@ describe("SQL Server driver unit tests", () => {
       })
       await c.connect()
       const cfg = mockConnectCalls[0]
-      expect(cfg.authentication.type).toBe("azure-active-directory-default")
+      expect(cfg.authentication.type).toBe("azure-active-directory-access-token")
+      expect(cfg.authentication.options.token).toBe("mock-azure-token-12345")
       expect(cfg.options.encrypt).toBe(true)
     })
 
