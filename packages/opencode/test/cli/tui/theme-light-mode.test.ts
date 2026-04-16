@@ -139,7 +139,7 @@ function getSyntaxRules(theme: Theme): SyntaxRule[] {
     },
     {
       scope: ["markup.raw.inline"],
-      style: { foreground: theme.markdownCode, background: theme.background },
+      style: { foreground: theme.markdownCode, background: theme.backgroundElement },
     },
     { scope: ["markup.link"], style: { foreground: theme.markdownLink, underline: true } },
     { scope: ["spell", "nospell"], style: { foreground: theme.text } },
@@ -352,4 +352,85 @@ describe("dark theme: regression check", () => {
       expect(defaultRule.style.foreground!.a).toBeGreaterThan(0)
     },
   )
+})
+
+// ─── Tests for #704 fixes ──────────────────────────────────────────────────
+
+describe("light theme: markup.raw.inline uses backgroundElement (issue #704)", () => {
+  test.each(LIGHT_THEMES)(
+    "%s: markup.raw.inline has non-transparent background",
+    (_name, themeJson) => {
+      const resolved = resolveTheme(themeJson, "light")
+      const rules = getSyntaxRules(resolved)
+
+      const inlineRule = rules.find((r) => r.scope.includes("markup.raw.inline"))
+      expect(inlineRule).toBeDefined()
+      expect(inlineRule!.style.background).toBeDefined()
+      // backgroundElement should never be fully transparent
+      expect(inlineRule!.style.background!.a).toBeGreaterThan(0)
+    },
+  )
+
+  test.each(LIGHT_THEMES)(
+    "%s: markup.raw.inline foreground is readable on its background",
+    (_name, themeJson) => {
+      const resolved = resolveTheme(themeJson, "light")
+      const rules = getSyntaxRules(resolved)
+
+      const inlineRule = rules.find((r) => r.scope.includes("markup.raw.inline"))!
+      const fg = inlineRule.style.foreground!
+      const bg = inlineRule.style.background!
+
+      const ratio = contrastRatio(fg, bg)
+      expect(ratio).toBeGreaterThanOrEqual(2)
+    },
+  )
+})
+
+describe("system theme: light mode foreground fallback (issue #704)", () => {
+  // Simulate what generateSystem does when defaultForeground is missing
+  // and mode is "light" — the fallback should NOT use palette[7] (#c0c0c0)
+  test("light mode fallback foreground is dark, not #c0c0c0", () => {
+    const PALETTE_7 = RGBA.fromHex("#c0c0c0")
+    const LIGHT_FALLBACK = RGBA.fromHex("#1a1a1a")
+    const WHITE_BG = RGBA.fromHex("#ffffff")
+
+    // In light mode, we should use #1a1a1a, not #c0c0c0
+    const ratio = contrastRatio(LIGHT_FALLBACK, WHITE_BG)
+    expect(ratio).toBeGreaterThanOrEqual(3)
+
+    // palette[7] would be nearly invisible
+    const badRatio = contrastRatio(PALETTE_7, WHITE_BG)
+    expect(badRatio).toBeLessThan(2) // confirms the bug
+  })
+})
+
+describe("COLORFGBG detection (issue #704)", () => {
+  // Test the parsing logic used in getTerminalBackgroundColor fallback
+  function parseCOLORFGBG(value: string): "dark" | "light" | null {
+    const parts = value.split(";")
+    const bg = parseInt(parts[parts.length - 1])
+    if (isNaN(bg)) return null
+    return bg >= 8 ? "light" : "dark"
+  }
+
+  test("COLORFGBG=0;15 -> light (white bg)", () => {
+    expect(parseCOLORFGBG("0;15")).toBe("light")
+  })
+
+  test("COLORFGBG=15;0 -> dark (black bg)", () => {
+    expect(parseCOLORFGBG("15;0")).toBe("dark")
+  })
+
+  test("COLORFGBG=0;7;15 -> light (3-part, last is bg)", () => {
+    expect(parseCOLORFGBG("0;7;15")).toBe("light")
+  })
+
+  test("COLORFGBG=15;0;0 -> dark (3-part, last is bg)", () => {
+    expect(parseCOLORFGBG("15;0;0")).toBe("dark")
+  })
+
+  test("invalid COLORFGBG -> null", () => {
+    expect(parseCOLORFGBG("abc")).toBe(null)
+  })
 })
