@@ -433,11 +433,9 @@ function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJs
   const transparent = RGBA.fromInts(0, 0, 0, 0)
   const isDark = mode == "dark"
 
-  // altimate_change start — fix: use contrast-appropriate fallback for light terminals
-  // palette[7] is #c0c0c0 (light gray) which is invisible on white backgrounds
+  // palette[7] (#c0c0c0) is invisible on light backgrounds — use dark fallback instead
   const fgFallback = isDark ? colors.palette[7]! : "#1a1a1a"
   const fg = RGBA.fromHex(colors.defaultForeground ?? fgFallback)
-  // altimate_change end
 
   const col = (i: number) => {
     const value = colors.palette[i]
@@ -953,10 +951,8 @@ function getSyntaxRules(theme: Theme) {
       scope: ["markup.raw.inline"],
       style: {
         foreground: theme.markdownCode,
-        // altimate_change start — fix: use backgroundElement for inline code contrast on light themes
-        // theme.background can be transparent, leaving inline code with no contrast protection
+        // backgroundElement (not background) ensures contrast when background is transparent
         background: theme.backgroundElement,
-        // altimate_change end
       },
     },
     {

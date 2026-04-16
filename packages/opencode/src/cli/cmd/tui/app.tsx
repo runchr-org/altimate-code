@@ -165,9 +165,7 @@ async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
 
     timeout = setTimeout(() => {
       cleanup()
-      // altimate_change start — fix: use COLORFGBG env var as fallback before defaulting to dark
-      // Many terminals (iTerm2, xterm, etc.) set COLORFGBG=<fg>;<bg> to indicate color scheme.
-      // When bg component >= 8, the terminal likely has a light background.
+      // Fallback: check COLORFGBG env var (set by many terminals) before defaulting to dark
       const colorfgbg = process.env.COLORFGBG
       if (colorfgbg) {
         const parts = colorfgbg.split(";")
@@ -178,7 +176,6 @@ async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
         }
       }
       resolve("dark")
-      // altimate_change end
     }, 1000)
   })
 }
