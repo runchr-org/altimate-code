@@ -482,8 +482,10 @@ const MAX_STEPS = 200
 
 /**
  * Build a DATE_TRUNC expression appropriate for the warehouse dialect.
+ *
+ * Exported for targeted unit testing; not part of the stable public API.
  */
-function dateTruncExpr(granularity: string, column: string, dialect: string): string {
+export function dateTruncExpr(granularity: string, column: string, dialect: string): string {
   const g = granularity.toLowerCase()
   switch (dialect) {
     case "bigquery":
@@ -565,8 +567,10 @@ function buildPartitionDiscoverySQL(
 
 /**
  * Build a WHERE clause that scopes to a single partition.
+ *
+ * Exported for targeted unit testing; not part of the stable public API.
  */
-function buildPartitionWhereClause(
+export function buildPartitionWhereClause(
   partitionColumn: string,
   partitionValue: string,
   granularity: string | undefined,
@@ -845,24 +849,6 @@ export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResul
     return runPartitionedDiff(params)
   }
 
-  // Dynamically import NAPI module (not available in test environments without the binary)
-  let DataParitySession: new (specJson: string) => {
-    start(): string
-    step(responsesJson: string): string
-  }
-
-  try {
-    const core = await import("@altimateai/altimate-core")
-    DataParitySession = (core as any).DataParitySession
-    if (!DataParitySession) throw new Error("DataParitySession not exported from @altimateai/altimate-core")
-  } catch (e) {
-    return {
-      success: false,
-      error: `altimate-core NAPI module unavailable: ${e}`,
-      steps: 0,
-    }
-  }
-
   // Resolve warehouse identity (fall back to the default warehouse when the
   // caller omits a side). Returns the canonical warehouse name so we can detect
   // cross-warehouse mode even when both sides share a dialect (e.g. two
@@ -889,6 +875,42 @@ export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResul
   const dialect1 = resolveDialect(params.source_warehouse)
   const dialect2 = resolveDialect(params.target_warehouse ?? params.source_warehouse)
 
+  // Input-validation guards — run BEFORE the NAPI import so they produce the
+  // right error even in environments where `@altimateai/altimate-core` isn't
+  // built locally.
+  //
+  // JoinDiff cannot work across warehouses: it emits one FULL OUTER JOIN task
+  // referencing both CTE aliases, but side-aware injection only defines one
+  // side per task — the other alias would be unresolved. Guard early so users
+  // get a clear error instead of an obscure SQL parse failure.
+  const crossWarehousePre = resolvedSource !== resolvedTarget
+  if (params.algorithm === "joindiff" && crossWarehousePre) {
+    return {
+      success: false,
+      steps: 0,
+      error:
+        "joindiff requires both tables in the same warehouse; use hashdiff or auto for cross-warehouse comparisons.",
+    }
+  }
+
+  // Dynamically import NAPI module (not available in test environments without the binary)
+  let DataParitySession: new (specJson: string) => {
+    start(): string
+    step(responsesJson: string): string
+  }
+
+  try {
+    const core = await import("@altimateai/altimate-core")
+    DataParitySession = (core as any).DataParitySession
+    if (!DataParitySession) throw new Error("DataParitySession not exported from @altimateai/altimate-core")
+  } catch (e) {
+    return {
+      success: false,
+      error: `altimate-core NAPI module unavailable: ${e}`,
+      steps: 0,
+    }
+  }
+
   // Cross-warehouse mode requires side-specific CTE injection: T-SQL / Fabric
   // parse-bind every CTE body even when unreferenced, so sending the combined
   // prefix to a warehouse that lacks the other side's base table fails at parse.
@@ -897,20 +919,7 @@ export async function runDataDiff(params: DataDiffParams): Promise<DataDiffResul
   // other's base tables. Identity comparison after resolving the default
   // warehouse avoids misclassifying `source_warehouse=undefined` vs the
   // explicit default-warehouse name as different.
-  const crossWarehouse = resolvedSource !== resolvedTarget
-
-  // Explicit JoinDiff cannot work across warehouses: it emits one FULL OUTER
-  // JOIN task referencing both CTE aliases, but side-aware injection only
-  // defines one side per task — the other alias would be unresolved. Guard
-  // early so users get a clear error instead of an obscure SQL parse failure.
-  if (params.algorithm === "joindiff" && crossWarehouse) {
-    return {
-      success: false,
-      steps: 0,
-      error:
-        "joindiff requires both tables in the same warehouse; use hashdiff or auto for cross-warehouse comparisons.",
-    }
-  }
+  const crossWarehouse = crossWarehousePre
 
   // Resolve sources (plain table names vs arbitrary queries). Pass dialects so
   // plain-table names inside wrapped CTEs get side-native bracket/quote style.
