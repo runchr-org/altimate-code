@@ -134,6 +134,7 @@ describe("cleanupPackActivation — plugin refcount by canonical name", () => {
       skill_groups: {},
       mcp: {},
       plugins: ["@scope/plugin@1.2.3"],
+      instructions: undefined,
       detect: [],
       content: "",
     }
@@ -195,6 +196,7 @@ describe("cleanupPackActivation — sidecar missing (legacy fallback)", () => {
         "legacy-mcp": { type: "stdio", command: ["foo"] },
       },
       plugins: [],
+      instructions: undefined,
       detect: [],
       content: "",
     }
