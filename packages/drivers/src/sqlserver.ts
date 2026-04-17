@@ -44,18 +44,26 @@ function parseTokenExpiry(token: string): number | undefined {
  *   1. Explicit `config.azure_resource_url`.
  *   2. Inferred from host suffix (Azure Gov / China).
  *   3. Default Azure commercial cloud.
+ *
+ * The returned URL is guaranteed to end with `/` — callers append `.default`
+ * to build the OAuth scope (e.g. `https://database.windows.net/.default`).
+ * Without the trailing slash, an explicit user value like
+ * `"https://custom-host"` would produce an invalid scope
+ * `"https://custom-host.default"` and `credential.getToken` would fail.
  */
 function resolveAzureResourceUrl(config: ConnectionConfig): string {
   const explicit = config.azure_resource_url as string | undefined
-  if (explicit) return explicit
-  const host = (config.host as string | undefined) ?? ""
-  if (host.includes(".usgovcloudapi.net") || host.includes(".datawarehouse.fabric.microsoft.us")) {
-    return "https://database.usgovcloudapi.net/"
-  }
-  if (host.includes(".chinacloudapi.cn")) {
-    return "https://database.chinacloudapi.cn/"
-  }
-  return "https://database.windows.net/"
+  const raw = explicit ?? (() => {
+    const host = (config.host as string | undefined) ?? ""
+    if (host.includes(".usgovcloudapi.net") || host.includes(".datawarehouse.fabric.microsoft.us")) {
+      return "https://database.usgovcloudapi.net/"
+    }
+    if (host.includes(".chinacloudapi.cn")) {
+      return "https://database.chinacloudapi.cn/"
+    }
+    return "https://database.windows.net/"
+  })()
+  return raw.endsWith("/") ? raw : `${raw}/`
 }
 
 /** Visible for testing: reset the module-scoped token cache. */
@@ -176,18 +184,26 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
 
           if (!token) {
             try {
-              // Use async `exec` (not `execSync`) so the connection path stays
-              // non-blocking — `az account get-access-token` can take several
-              // seconds to round-trip and execSync would block the entire
-              // event loop for that duration.
+              // Use async `execFile` (NOT `exec`/`execSync`):
+              //   - `execFile` skips the shell entirely and passes args as an
+              //     array, preventing shell interpolation when `resourceUrl`
+              //     comes from user config (e.g. `"https://x/;other-cmd"`).
+              //   - async keeps the connect path non-blocking during the
+              //     multi-second `az` round trip.
               const childProcess = await import("node:child_process")
               const { promisify } = await import("node:util")
-              const execAsync = promisify(childProcess.exec)
-              const { stdout } = await execAsync(
-                `az account get-access-token --resource ${resourceUrl} --query accessToken -o tsv`,
+              const execFileAsync = promisify(childProcess.execFile)
+              const { stdout } = await execFileAsync(
+                "az",
+                [
+                  "account", "get-access-token",
+                  "--resource", resourceUrl,
+                  "--query", "accessToken",
+                  "-o", "tsv",
+                ],
                 { encoding: "utf-8", timeout: 15000 },
               )
-              const out = stdout.trim()
+              const out = String(stdout).trim()
               if (out) {
                 token = out
                 expiresAt = parseTokenExpiry(out)

@@ -92,30 +92,50 @@ const cliState = {
 }
 const realChildProcess = await import("node:child_process")
 const realUtil = await import("node:util")
-// Stub `exec` with a custom `util.promisify.custom` so `promisify(exec)`
-// yields { stdout, stderr } exactly as the real implementation does. Also
-// keep the legacy callback form of `execSync` for tests that still use it.
-const execStub: any = (cmd: string, optsOrCb: any, maybeCb?: any) => {
-  cliState.lastCmd = cmd
-  const cb = typeof optsOrCb === "function" ? optsOrCb : maybeCb
-  if (cliState.throwError) {
-    const e: any = new Error(cliState.throwError.message ?? "az failed")
-    e.stderr = cliState.throwError.stderr
-    if (cb) cb(e, "", cliState.throwError.stderr ?? "")
+
+// Helper: build a mock with callback + util.promisify.custom support so
+// `promisify(child_process.exec)` or `promisify(child_process.execFile)`
+// yields { stdout, stderr } exactly like the real implementation.
+function makeChildProcessMock(captureCmd: (args: string) => void) {
+  const stub: any = (arg0: any, arg1: any, arg2: any, arg3: any) => {
+    // Accept both exec(cmd, opts?, cb?) and execFile(file, args?, opts?, cb?)
+    const cb = [arg0, arg1, arg2, arg3].find((x) => typeof x === "function")
+    // Pick the best "command" representation for test assertions:
+    //   - exec:     first arg is the full command string
+    //   - execFile: first arg is the program, second arg is the args array
+    if (Array.isArray(arg1)) {
+      captureCmd(`${arg0} ${arg1.join(" ")}`)
+    } else {
+      captureCmd(String(arg0))
+    }
+    if (cliState.throwError) {
+      const e: any = new Error(cliState.throwError.message ?? "az failed")
+      e.stderr = cliState.throwError.stderr
+      if (cb) cb(e, "", cliState.throwError.stderr ?? "")
+      return { on() {}, stdout: null, stderr: null }
+    }
+    if (cb) cb(null, cliState.output, "")
     return { on() {}, stdout: null, stderr: null }
   }
-  if (cb) cb(null, cliState.output, "")
-  return { on() {}, stdout: null, stderr: null }
-}
-execStub[realUtil.promisify.custom] = (cmd: string, _opts?: any) => {
-  cliState.lastCmd = cmd
-  if (cliState.throwError) {
-    const e: any = new Error(cliState.throwError.message ?? "az failed")
-    e.stderr = cliState.throwError.stderr
-    return Promise.reject(e)
+  stub[realUtil.promisify.custom] = (arg0: any, arg1: any) => {
+    if (Array.isArray(arg1)) {
+      captureCmd(`${arg0} ${arg1.join(" ")}`)
+    } else {
+      captureCmd(String(arg0))
+    }
+    if (cliState.throwError) {
+      const e: any = new Error(cliState.throwError.message ?? "az failed")
+      e.stderr = cliState.throwError.stderr
+      return Promise.reject(e)
+    }
+    return Promise.resolve({ stdout: cliState.output, stderr: "" })
   }
-  return Promise.resolve({ stdout: cliState.output, stderr: "" })
+  return stub
 }
+
+const execStub = makeChildProcessMock((c) => { cliState.lastCmd = c })
+const execFileStub = makeChildProcessMock((c) => { cliState.lastCmd = c })
+
 mock.module("node:child_process", () => ({
   ...realChildProcess,
   execSync: (cmd: string) => {
@@ -128,6 +148,7 @@ mock.module("node:child_process", () => ({
     return cliState.output
   },
   exec: execStub,
+  execFile: execFileStub,
 }))
 
 // Import after mocking
@@ -724,6 +745,20 @@ describe("SQL Server driver unit tests", () => {
       })
       await c.connect()
       expect(azureIdentityState.lastScope).toBe("https://custom.sovereign.example/.default")
+    })
+
+    test("azure_resource_url without trailing slash is normalized", async () => {
+      // Regression: without the slash, `${resourceUrl}.default` produced an
+      // invalid scope like "https://custom-host.default", and `getToken`
+      // would reject it.
+      resetMocks()
+      const c = await connect({
+        host: "x.database.windows.net", database: "d",
+        authentication: "azure-active-directory-default",
+        azure_resource_url: "https://custom-host",
+      })
+      await c.connect()
+      expect(azureIdentityState.lastScope).toBe("https://custom-host/.default")
     })
 
     test("az CLI fallback uses the same resource URL", async () => {

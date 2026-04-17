@@ -595,21 +595,29 @@ export function buildPartitionWhereClause(
 
   // date mode
   const expr = dateTruncExpr(granularity!, quotedCol, dialect)
-  // Normalize the partition value to ISO yyyy-mm-dd. The mssql driver returns
-  // date columns as JS Date objects which get `String()`-coerced upstream,
-  // producing output like "Mon Jan 01 2024 00:00:00 GMT+0000 (UTC)" —
-  // T-SQL `CONVERT(DATE, …, 23)` and Postgres date literals both reject that
-  // format. Parsing once here keeps the downstream SQL dialect-safe.
-  const isoDate = (() => {
-    const trimmed = partitionValue.trim()
-    // Already looks like yyyy-mm-dd — preserve as-is so pre-formatted values
-    // (e.g. from Postgres, BigQuery, DATE_FORMAT MySQL output) flow through
-    // without surprising timezone shifts.
-    if (/^\d{4}-\d{2}-\d{2}(\s|T|$)/.test(trimmed)) return trimmed.slice(0, 10)
-    const d = new Date(trimmed)
-    return Number.isNaN(d.getTime()) ? trimmed : d.toISOString().slice(0, 10)
-  })()
-  const escaped = isoDate.replace(/'/g, "''")
+  // Normalize to ISO `yyyy-mm-dd` ONLY for T-SQL / Fabric, which use
+  // `CONVERT(DATE, '…', 23)` (strict ISO-8601 parser). The mssql driver
+  // returns date columns as JS Date objects that coerce to strings like
+  // "Mon Jan 01 2024 00:00:00 GMT+0000 (UTC)" — that format must be parsed
+  // to ISO before CONVERT will accept it.
+  //
+  // For other dialects, pass the value through unchanged. MySQL/MariaDB
+  // produce non-ISO `DATE_FORMAT` outputs (e.g. `YYYY-%u` for ISO week,
+  // which is `YYYY-42` not `YYYY-MM-DD`), and forcing ISO conversion would
+  // corrupt them — the WHERE would never match. Postgres / BigQuery /
+  // ClickHouse accept whatever their own `DATE_TRUNC`/`toStartOf*`
+  // emits verbatim on the round trip.
+  const needsIso = dialect === "tsql" || dialect === "fabric" ||
+    dialect === "sqlserver" || dialect === "mssql"
+  const normalized = needsIso
+    ? (() => {
+        const trimmed = partitionValue.trim()
+        if (/^\d{4}-\d{2}-\d{2}(\s|T|$)/.test(trimmed)) return trimmed.slice(0, 10)
+        const d = new Date(trimmed)
+        return Number.isNaN(d.getTime()) ? trimmed : d.toISOString().slice(0, 10)
+      })()
+    : partitionValue
+  const escaped = normalized.replace(/'/g, "''")
 
   // Cast the literal appropriately per dialect
   switch (dialect) {
@@ -775,6 +783,26 @@ async function runPartitionedDiff(params: DataDiffParams): Promise<DataDiffResul
     }
   }
 
+  // Auto-discover extra_columns ONCE here on the plain source table — we wrap
+  // each partition's source/target as SELECT subqueries below, which
+  // `discoverExtraColumns` skips (it only works on plain table names). If we
+  // let the recursive `runDataDiff` try, it'd always see a wrapped query and
+  // regress to key-only comparison (value-level diffs silently lost).
+  let resolvedExtraColumns = params.extra_columns
+  let partitionExcludedAudit: string[] = []
+  if (!resolvedExtraColumns || resolvedExtraColumns.length === 0) {
+    const discovered = await discoverExtraColumns(
+      params.source,
+      params.key_columns,
+      sourceDialect,
+      params.source_warehouse,
+    )
+    if (discovered) {
+      resolvedExtraColumns = discovered.columns
+      partitionExcludedAudit = discovered.excludedAudit
+    }
+  }
+
   // Diff each partition
   const partitionResults: PartitionDiffResult[] = []
   let aggregatedOutcome: unknown = null
@@ -820,6 +848,10 @@ async function runPartitionedDiff(params: DataDiffParams): Promise<DataDiffResul
       target: targetSql,
       // Preserve the user's shared where_clause — it's dialect-neutral.
       where_clause: params.where_clause,
+      // Pass auto-discovered extras explicitly — `runDataDiff`'s own
+      // discovery path would skip these wrapped SELECT subqueries and
+      // regress to key-only comparison.
+      extra_columns: resolvedExtraColumns,
       partition_column: undefined, // prevent recursion
     })
 
@@ -840,6 +872,7 @@ async function runPartitionedDiff(params: DataDiffParams): Promise<DataDiffResul
     steps: totalSteps,
     outcome: aggregatedOutcome ?? { mode: "diff", stats: { rows_table1: 0, rows_table2: 0, exclusive_table1: 0, exclusive_table2: 0, updated: 0, unchanged: 0 }, diff_rows: [] },
     partition_results: partitionResults,
+    ...(partitionExcludedAudit.length > 0 ? { excluded_audit_columns: partitionExcludedAudit } : {}),
   }
 }
 

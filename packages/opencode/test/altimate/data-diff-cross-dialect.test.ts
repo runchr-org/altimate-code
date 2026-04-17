@@ -130,6 +130,23 @@ describe("buildPartitionWhereClause — cross-dialect correctness (the CRITICAL 
     const sql = buildPartitionWhereClause(col, "Mon Apr 01 2024 00:00:00 GMT+0000", "month", undefined, "tsql")
     expect(sql).toContain("CONVERT(DATE, '2024-04-01', 23)")
   })
+
+  test("mysql week-format values pass through unchanged (regression: no ISO rewrite)", () => {
+    // Regression guard: MySQL `DATE_FORMAT(%Y-%u)` emits e.g. "2024-42" for
+    // week 42 — that's not a parseable JS Date. An earlier revision tried
+    // to normalize it to ISO `yyyy-mm-dd`, which either produced NaN or a
+    // wildly wrong date (Dec 2024 in 0042 AD). Must be passed through.
+    const sql = buildPartitionWhereClause("ts", "2024-42", "week", undefined, "mysql")
+    expect(sql).toContain("= '2024-42'")
+    expect(sql).not.toContain("0042")
+    expect(sql).not.toContain("NaN")
+  })
+
+  test("mysql DATE_FORMAT month output flows through verbatim", () => {
+    const sql = buildPartitionWhereClause("ts", "2024-04-01", "month", undefined, "mariadb")
+    expect(sql).toContain("DATE_FORMAT(`ts`, '%Y-%m-01')")
+    expect(sql).toContain("= '2024-04-01'")
+  })
 })
 
 // The joindiff guard runs BEFORE `runDataDiff`'s NAPI import, so we can drive
@@ -147,7 +164,7 @@ describe("joindiff + cross-warehouse guard", () => {
     Registry.reset()
   })
 
-  test("explicit joindiff with different warehouses returns early error", async () => {
+  test("explicit joindiff with different warehouses (mixed dialect) returns early error", async () => {
     Registry.setConfigs({
       msrc: { type: "sqlserver", host: "mssql-host", database: "src" },
       ptgt: { type: "postgres", host: "pg-host", database: "tgt" },
@@ -163,6 +180,29 @@ describe("joindiff + cross-warehouse guard", () => {
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/joindiff requires both tables in the same warehouse/i)
     // Guard must fire before any NAPI/driver work, so steps stays at 0.
+    expect(result.steps).toBe(0)
+  })
+
+  test("explicit joindiff with different warehouses (SAME dialect) still errors", async () => {
+    // Regression guard: if `crossWarehouse` were computed from dialect
+    // equality (as an earlier revision did) instead of resolved warehouse
+    // identity, this case would slip through and route a JOIN query to a
+    // warehouse that doesn't have the other side's tables. Two MSSQL
+    // servers share a dialect but are independent physical databases.
+    Registry.setConfigs({
+      mssql_a: { type: "sqlserver", host: "server-a", database: "src" },
+      mssql_b: { type: "sqlserver", host: "server-b", database: "tgt" },
+    })
+    const result = await runDataDiff({
+      source: "dbo.orders",
+      target: "dbo.orders",
+      key_columns: ["id"],
+      source_warehouse: "mssql_a",
+      target_warehouse: "mssql_b",
+      algorithm: "joindiff",
+    })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/joindiff requires both tables in the same warehouse/i)
     expect(result.steps).toBe(0)
   })
 
