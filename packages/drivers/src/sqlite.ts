@@ -4,7 +4,7 @@
  */
 
 import { Database } from "bun:sqlite"
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   const dbPath = (config.path as string) ?? ":memory:"
@@ -22,9 +22,9 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       }
     },
 
-    async execute(sql: string, limit?: number, _binds?: any[]): Promise<ConnectorResult> {
+    async execute(sql: string, limit?: number, _binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
       if (!db) throw new Error("SQLite connection not open")
-      const effectiveLimit = limit ?? 1000
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
 
       // Determine if this is a SELECT-like statement
       const trimmed = sql.trim().toLowerCase()
@@ -60,7 +60,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       const stmt = db.prepare(query)
       const rows = stmt.all() as any[]
       const columns = rows.length > 0 ? Object.keys(rows[0]) : []
-      const truncated = rows.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && rows.length > effectiveLimit
       const limitedRows = truncated ? rows.slice(0, effectiveLimit) : rows
 
       return {

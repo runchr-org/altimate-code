@@ -10340,7 +10340,7 @@
             "$ref": "#/components/schemas/ServerConfig"
           },
           "command": {
-            "description": "Command configuration, see https://altimate.ai/docs/commands",
+            "description": "Command configuration, see https://docs.altimate.sh/configure/commands/",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -10474,7 +10474,7 @@
             }
           },
           "agent": {
-            "description": "Agent configuration, see https://altimate.ai/docs/agents",
+            "description": "Agent configuration, see https://docs.altimate.sh/configure/agents/",
             "type": "object",
             "properties": {
               "plan": {

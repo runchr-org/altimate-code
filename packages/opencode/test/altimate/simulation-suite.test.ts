@@ -907,15 +907,13 @@ describe("Category 4: dbt Integration", () => {
         args: { path: "target/manifest.json" },
         mockResponse: {
           success: true,
-          data: {
-            model_count: project.models,
-            source_count: project.sources,
-            test_count: project.tests,
-            snapshot_count: 0,
-            seed_count: 0,
-            models,
-            sources: [{ name: "raw_data", schema: "raw", columns: [] }],
-          },
+          model_count: project.models,
+          source_count: project.sources,
+          test_count: project.tests,
+          snapshot_count: 0,
+          seed_count: 0,
+          models,
+          sources: [{ name: "raw_data", schema: "raw", columns: [] }],
         },
         assertions: (result) => {
           expect(result.output).toContain("model")
@@ -1122,10 +1120,10 @@ describe("Category 7: SQL Translation", () => {
             dialect: `${source}→${target}`,
             mockResponse: {
               success: true,
-              data: {
-                translated_sql: SQL_CORPUS[sqlKey].replace(/SELECT/g, "/* translated */ SELECT"),
-                warnings: source === "snowflake" && target === "mysql" ? ["QUALIFY clause not supported in MySQL"] : [],
-              },
+              translated_sql: SQL_CORPUS[sqlKey].replace(/SELECT/g, "/* translated */ SELECT"),
+              source_dialect: source,
+              target_dialect: target,
+              warnings: source === "snowflake" && target === "mysql" ? ["QUALIFY clause not supported in MySQL"] : [],
             },
             assertions: (result) => {
               expect(result.output).toContain(source)

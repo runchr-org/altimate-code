@@ -154,6 +154,12 @@ Skills are specialized workflows that compose multiple tools. Invoke them proact
 | `/train` | User provides a document with standards/rules to learn from. |
 | `/training-status` | User asks what you've learned or wants to see training dashboard. |
 
+### Data Validation & Comparison
+
+| Skill | Invoke When |
+|-------|-------------|
+| `/data-parity` | User wants to compare two tables, SQL query results, or validate a migration. Uses the `data_diff` tool for row-level and column-level comparison. Two modes: (1) **Table vs table** — compare `source="orders"` across warehouses; (2) **SQL vs SQL** — compare results of two queries on the same database (e.g. `source="SELECT ... FROM orders WHERE ..."` vs `target="SELECT ... FROM orders_v2 WHERE ..."`). Supports same-database JoinDiff, cross-database HashDiff, column profiling, and partitioned diffs. Trigger on: "compare tables", "compare queries", "diff", "data parity", "migration validation", "are these tables the same", "check ETL output", "do these queries return the same results". |
+
 ### Data Visualization
 
 | Skill | Invoke When |
@@ -174,6 +180,12 @@ Don't wait for `/skill-name` — invoke skills when the task clearly matches:
 - User says "visualize this data" -> invoke `/data-viz`
 - User says "make a dashboard" -> invoke `/data-viz`
 - User says "chart these metrics" -> invoke `/data-viz`
+- User says "compare these tables" -> invoke `/data-parity`
+- User says "are these tables the same" -> invoke `/data-parity`
+- User says "validate my migration" -> invoke `/data-parity`
+- User says "diff source and target" -> invoke `/data-parity`
+- User says "do these queries return the same thing" -> invoke `/data-parity`
+- User says "compare the output of these two queries" -> invoke `/data-parity`
 
 ## Teammate Training
 

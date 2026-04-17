@@ -3,7 +3,7 @@
  */
 
 import * as fs from "fs"
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let snowflake: any
@@ -232,8 +232,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       })
     },
 
-    async execute(sql: string, limit?: number, binds?: any[]): Promise<ConnectorResult> {
-      const effectiveLimit = limit ?? 1000
+    async execute(sql: string, limit?: number, binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
       let query = sql
       const isSelectLike = /^\s*(SELECT|WITH|VALUES|SHOW)\b/i.test(sql)
       if (
@@ -245,7 +245,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       }
 
       const result = await executeQuery(query, binds)
-      const truncated = result.rows.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && result.rows.length > effectiveLimit
       const rows = truncated
         ? result.rows.slice(0, effectiveLimit)
         : result.rows

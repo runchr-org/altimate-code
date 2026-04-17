@@ -2,7 +2,7 @@
  * Databricks driver using the `@databricks/sql` package.
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let databricksModule: any
@@ -44,8 +44,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       })
     },
 
-    async execute(sql: string, limit?: number, binds?: any[]): Promise<ConnectorResult> {
-      const effectiveLimit = limit ?? 1000
+    async execute(sql: string, limit?: number, binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
       let query = sql
       const isSelectLike = /^\s*(SELECT|WITH|VALUES)\b/i.test(sql)
       if (
@@ -65,7 +65,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       await operation.close()
 
       const columns = rows.length > 0 ? Object.keys(rows[0]) : []
-      const truncated = rows.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && rows.length > effectiveLimit
       const limitedRows = truncated ? rows.slice(0, effectiveLimit) : rows
 
       return {

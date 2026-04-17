@@ -680,7 +680,7 @@ function App() {
       title: "Open docs",
       value: "docs.open",
       onSelect: () => {
-        open("https://altimate.ai/docs").catch(() => {})
+        open("https://docs.altimate.sh").catch(() => {})
         dialog.clear()
       },
       category: "System",

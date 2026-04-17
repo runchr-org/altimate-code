@@ -5,7 +5,7 @@
  * Uses the official ClickHouse JS client which communicates over HTTP(S).
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let createClient: any
@@ -57,14 +57,17 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
         clientConfig.clickhouse_settings = config.clickhouse_settings
       }
 
+      // Silence the client's internal stderr logger — its ERROR-level output
+      // writes raw lines directly to stderr and corrupts terminal TUI rendering.
+      clientConfig.log = { level: 127 } // ClickHouseLogLevel.OFF = 127
       client = createClient(clientConfig)
     },
 
-    async execute(sql: string, limit?: number, _binds?: any[]): Promise<ConnectorResult> {
+    async execute(sql: string, limit?: number, _binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
       if (!client) {
         throw new Error("ClickHouse client not connected — call connect() first")
       }
-      const effectiveLimit = limit === undefined ? 1000 : limit
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
       let query = sql
 
       // Strip string literals, then comments, for accurate SQL heuristic checks.

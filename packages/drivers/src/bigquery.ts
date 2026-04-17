@@ -2,7 +2,7 @@
  * BigQuery driver using the `@google-cloud/bigquery` package.
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let BigQueryModule: any
@@ -37,8 +37,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       client = new BigQuery(options)
     },
 
-    async execute(sql: string, limit?: number, binds?: any[]): Promise<ConnectorResult> {
-      const effectiveLimit = limit ?? 1000
+    async execute(sql: string, limit?: number, binds?: any[], execOptions?: ExecuteOptions): Promise<ConnectorResult> {
+      const effectiveLimit = execOptions?.noLimit ? 0 : (limit ?? 1000)
       const query = sql.replace(/;\s*$/, "")
       const isSelectLike = /^\s*(SELECT|WITH|VALUES)\b/i.test(sql)
 
@@ -58,7 +58,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
 
       const [rows] = await client.query(options)
       const columns = rows.length > 0 ? Object.keys(rows[0]) : []
-      const truncated = rows.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && rows.length > effectiveLimit
       const limitedRows = truncated ? rows.slice(0, effectiveLimit) : rows
 
       return {

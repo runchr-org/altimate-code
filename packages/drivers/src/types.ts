@@ -20,9 +20,15 @@ export interface SchemaColumn {
   nullable: boolean
 }
 
+export interface ExecuteOptions {
+  /** Skip the default LIMIT injection and post-truncation. Use when the caller
+   *  needs the complete, untruncated result set (e.g. data-diff pipelines). */
+  noLimit?: boolean
+}
+
 export interface Connector {
   connect(): Promise<void>
-  execute(sql: string, limit?: number, binds?: any[]): Promise<ConnectorResult>
+  execute(sql: string, limit?: number, binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult>
   listSchemas(): Promise<string[]>
   listTables(schema: string): Promise<Array<{ name: string; type: string }>>
   describeTable(schema: string, table: string): Promise<SchemaColumn[]>

@@ -2,7 +2,7 @@
  * SQL Server driver using the `mssql` (tedious) package.
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let mssql: any
@@ -42,8 +42,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       pool = await mssql.connect(mssqlConfig)
     },
 
-    async execute(sql: string, limit?: number, _binds?: any[]): Promise<ConnectorResult> {
-      const effectiveLimit = limit ?? 1000
+    async execute(sql: string, limit?: number, _binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
 
       let query = sql
       const isSelectLike = /^\s*SELECT\b/i.test(sql)
@@ -69,7 +69,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
           : (result.recordset?.columns
               ? Object.keys(result.recordset.columns)
               : [])
-      const truncated = rows.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && rows.length > effectiveLimit
       const limitedRows = truncated ? rows.slice(0, effectiveLimit) : rows
 
       return {

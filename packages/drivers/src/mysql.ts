@@ -2,7 +2,7 @@
  * MySQL driver using the `mysql2` package.
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let mysql: any
@@ -41,8 +41,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       pool = mysql.createPool(poolConfig)
     },
 
-    async execute(sql: string, limit?: number, _binds?: any[]): Promise<ConnectorResult> {
-      const effectiveLimit = limit ?? 1000
+    async execute(sql: string, limit?: number, _binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
       let query = sql
       const isSelectLike = /^\s*(SELECT|WITH|VALUES)\b/i.test(sql)
       if (
@@ -56,7 +56,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       const [rows, fields] = await pool.query(query)
       const columns = fields?.map((f: any) => f.name) ?? []
       const rowsArr = Array.isArray(rows) ? rows : []
-      const truncated = rowsArr.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && rowsArr.length > effectiveLimit
       const limitedRows = truncated
         ? rowsArr.slice(0, effectiveLimit)
         : rowsArr

@@ -2,7 +2,7 @@
  * DuckDB driver using the `duckdb` package.
  */
 
-import type { ConnectionConfig, Connector, ConnectorResult, SchemaColumn } from "./types"
+import type { ConnectionConfig, Connector, ConnectorResult, ExecuteOptions, SchemaColumn } from "./types"
 
 export async function connect(config: ConnectionConfig): Promise<Connector> {
   let duckdb: any
@@ -105,8 +105,8 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
       connection = db.connect()
     },
 
-    async execute(sql: string, limit?: number, binds?: any[]): Promise<ConnectorResult> {
-      const effectiveLimit = limit ?? 1000
+    async execute(sql: string, limit?: number, binds?: any[], options?: ExecuteOptions): Promise<ConnectorResult> {
+      const effectiveLimit = options?.noLimit ? 0 : (limit ?? 1000)
 
       let finalSql = sql
       const isSelectLike = /^\s*(SELECT|WITH|VALUES)\b/i.test(sql)
@@ -123,7 +123,7 @@ export async function connect(config: ConnectionConfig): Promise<Connector> {
         : await query(finalSql)
       const columns =
         rows.length > 0 ? Object.keys(rows[0]) : []
-      const truncated = rows.length > effectiveLimit
+      const truncated = effectiveLimit > 0 && rows.length > effectiveLimit
       const limitedRows = truncated ? rows.slice(0, effectiveLimit) : rows
 
       return {

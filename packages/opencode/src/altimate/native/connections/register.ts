@@ -10,6 +10,7 @@ import { register } from "../dispatcher"
 import * as Registry from "./registry"
 import { discoverContainers } from "./docker-discovery"
 import { parseDbtProfiles } from "./dbt-profiles"
+import { runDataDiff } from "./data-diff"
 import type {
   SqlExecuteParams,
   SqlExecuteResult,
@@ -29,6 +30,8 @@ import type {
   SchemaInspectResult,
   DbtProfilesParams,
   DbtProfilesResult,
+  DataDiffParams,
+  DataDiffResult,
 } from "../types"
 import type { ConnectionConfig } from "@altimateai/drivers"
 import { Telemetry } from "../../../telemetry"
@@ -616,6 +619,11 @@ register("dbt.profiles", async (params: DbtProfilesParams): Promise<DbtProfilesR
       error: String(e),
     }
   }
+})
+
+// --- data.diff ---
+register("data.diff", async (params: DataDiffParams): Promise<DataDiffResult> => {
+  return runDataDiff(params)
 })
 
 } // end registerAll
