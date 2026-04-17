@@ -83,7 +83,7 @@ For all warehouse types (Snowflake, BigQuery, Databricks, PostgreSQL, Redshift, 
 
 ### Connecting to Altimate
 
-If you have an Altimate platform account, run `/connect` in the TUI, select **Altimate**, and enter your credentials in this format:
+If you have an Altimate platform account, run `/connect` in the TUI, select **Altimate AI**, and enter your credentials in this format:
 
 ```text
 instance-name::api-key
