@@ -999,6 +999,14 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
+      case e instanceof Error && /OAuth token refresh failed/i.test(e.message):
+        return new MessageV2.AuthError(
+          {
+            providerID: ctx.providerID,
+            message: e.message,
+          },
+          { cause: e },
+        ).toObject()
       case e instanceof Error:
         return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()
       default:

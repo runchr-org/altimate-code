@@ -171,7 +171,10 @@ export namespace ProviderError {
 
   export function parseAPICallError(input: { providerID: ProviderID; error: APICallError }): ParsedAPICallError {
     const m = message(input.providerID, input.error)
-    if (isOverflow(m) || input.error.statusCode === 413) {
+    // Check responseBody for context_length_exceeded code (e.g., OpenAI-style errors)
+    const bodyParsed = json(input.error.responseBody)
+    const codeFromBody = bodyParsed?.error?.code
+    if (isOverflow(m) || input.error.statusCode === 413 || codeFromBody === "context_length_exceeded") {
       return {
         type: "context_overflow",
         message: m,

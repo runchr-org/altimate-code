@@ -19,7 +19,12 @@ export function errorFormat(error: unknown): string {
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message) return error.message
-    if (error.name) return error.name
+    // For Error instances with no message, surface stack location for context
+    // so callers don't see opaque "Error".
+    const stack = error.stack?.split("\n").slice(1, 3).join(" | ").trim()
+    if (stack) return `${error.name || "Error"} (no message): ${stack}`
+    if (error.name && error.name !== "Error") return error.name
+    return "Empty error (no message, no stack)"
   }
 
   if (isRecord(error) && typeof error.message === "string" && error.message) {

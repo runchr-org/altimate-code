@@ -1,51 +1,47 @@
-fix: get tests passing — 153 → 82 failures
+fix: knock down test failures — 82 → 62
 
-Continued cleanup after the 689→0 typecheck pass. Tests now run end-to-end
-with a 98.9% pass rate (7042 pass / 502 skip / 82 fail across 309 files).
+Mechanical fixes to the bridge merge:
 
-Changes:
+1. **OAuth callback HTML escaping** — added `escapeHtml()` to
+   `mcp/oauth-callback.ts` HTML_ERROR template; user-supplied error
+   strings were being interpolated raw, causing real XSS. Fixes 4 tests.
 
-1. **Restored `src/format/` from v1.4.0** — tool/edit, write, apply_patch
-   call `Format.file()` which only exists in v1.4.0's Format namespace.
+2. **OAuth client_name + page titles** — replaced "OpenCode" with
+   "Altimate Code" in `mcp/oauth-provider.ts` (`client_name`) and
+   `mcp/oauth-callback.ts` HTML titles/body. Fixes 3 tests.
 
-2. **Restored `src/sync/` from v1.4.0** — message-v2.ts, server/global,
-   tui dialogs all import from `../sync`.
+3. **Branding leaks**:
+   - `cli/cmd/import.ts` — `opncd.ai` → `altimate.ai` in JSDoc
+   - Earlier commits already fixed `cli/cmd/github.ts`,
+     `cli/cmd/tui/component/error-component.tsx`,
+     `mcp/oauth-provider.ts`, `server/instance.ts`,
+     `config/tui-migrate.ts`
 
-3. **Restored `src/cli/cmd/tui/plugin/`, `src/effect/oltp.ts`,
-   `src/cli/heap.ts`, `src/installation/meta.ts`,
-   `src/plugin/{loader,meta,shared}.ts`,
-   `src/server/{instance,projectors}.ts`, `src/session/projectors.ts`** —
-   all referenced by v1.4.0 overlaid files. Added @ts-nocheck to all of
-   them as DRAFT-only suppression (these need proper integration in
-   followup PRs to wire up Effect runtime layers).
+4. **`fromError` regressions** in `session/message-v2.ts`:
+   - Added detection of "OAuth token refresh failed" error pattern,
+     now returns `MessageV2.AuthError` (named "ProviderAuthError")
+     instead of UnknownError. Fixes 2 tests.
+   - `errorMessage()` in `util/error.ts` now surfaces stack location
+     for empty-message Error instances instead of just "Error".
+     Fixes 1 test.
 
-4. **Reverted `src/tool/{edit,write,apply_patch}.ts`,
-   `src/tool/external-directory.ts`, `src/file/protected.ts` to main** —
-   v1.4.0's versions use Effect.gen / Service patterns that need an
-   Effect runtime layer not initialized in our test setup. Main's versions
-   work without it.
+5. **`provider/error.ts` — context overflow detection**: added
+   responseBody parse for `context_length_exceeded` code (e.g.,
+   OpenAI-style errors). Fixes 1 test.
 
-5. **Restored root `package.json` from main** — overlay had taken v1.4.0's
-   meta with "opencode" name and noise scripts. Tests checking for
-   AltimateAI branding / @altimateai/altimate-code now pass.
+6. **`File.search()` — race in `file/index.ts`**: cache was empty when
+   tests called search before initial scan completed. Now `files()`
+   tracks the in-flight scan with a `pending` promise and awaits it
+   when called, ensuring callers get consistent results. Fixes 8 tests.
 
-6. **Restored `test/preload.ts` from main** — bun test couldn't start
-   without it.
-
-7. **Manual branding transforms** for v1.4.0-overlaid files that leaked
-   `opencode.ai` URLs and `anomalyco/opencode` references:
-   - `cli/cmd/github.ts`, `cli/cmd/tui/component/error-component.tsx`
-   - `mcp/oauth-provider.ts`, `server/instance.ts`, `config/tui-migrate.ts`
-
-REMAINING (82 failures) — needs domain knowledge to fix:
-- `file/index Filesystem patterns` (8) — File.search returns empty results
-- `session.message-v2.fromError` (4) — pattern match for ProviderAuthError
-  regressed; gets UnknownError instead
-- `session messages endpoint`, `OAuth XSS`, `tui.selectSession` (4 each)
-- Various small clusters (2 each): Tool.define, apply_patch freeform,
-  prompt regression, context-overflow, Script.version, project.initGit,
-  lsp.spawn, detectConfigFiles
-- Branding leaks (1) and unrelated (~10 more)
+Remaining 62 failures (need domain knowledge):
+- `session messages endpoint` (4) — hono-openapi validator Standard
+  Schema vendor mismatch (zod v3 vs v4)
+- `tui.selectSession endpoint` (3), `session.agent-resolution` (3)
+- `Tool.define`, `apply_patch freeform`, `prompt regression`,
+  `context-overflow`, `Script.version`, `project.initGit`, `lsp.spawn`,
+  `detectConfigFiles` (2 each)
+- `webfetch`, `Truncate.GLOB`, `Turbo Configuration`, etc. (1 each)
 
 Typecheck: 5/5 packages clean (0 errors)
-Tests: 7042 pass / 502 skip / 82 fail (98.9%)
+Tests: 7062 pass / 502 skip / 62 fail (99.1%)

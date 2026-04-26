@@ -401,14 +401,14 @@ export namespace File {
     }
     fn(cache)
 
+    let pending: Promise<void> | undefined
     return {
       async files() {
-        if (!fetching) {
-          fn({
-            files: [],
-            dirs: [],
-          })
-        }
+        // Always ensure cache reflects a recent scan: if a scan is in-flight,
+        // wait for it; otherwise kick off a fresh scan and await it.
+        if (!pending) pending = fn({ files: [], dirs: [] })
+        await pending
+        pending = undefined
         return cache
       },
     }
