@@ -376,6 +376,10 @@ export namespace MessageV2 {
     }),
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
+    // altimate_change start — top-level variant mirrors Assistant.variant for
+    // propagation (see prompt.ts:427/722 — assistant inherits variant from user)
+    variant: z.string().optional(),
+    // altimate_change end
   }).meta({
     ref: "UserMessage",
   })

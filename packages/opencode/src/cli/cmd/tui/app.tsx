@@ -305,6 +305,7 @@ function App() {
       // Config failure should not prevent TUI from working
     }
   })
+  // altimate_change end
 
   // altimate_change start — trace: open trace in browser
   async function openTraceInBrowser(sessionID: string) {
