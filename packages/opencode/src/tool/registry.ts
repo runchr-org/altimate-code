@@ -4,7 +4,12 @@ import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
+// altimate_change start — keep BatchTool: upstream deleted batch.ts in #21052 (tool system
+// refactor) but we still ship it under the experimental.batch_tool flag. Marker added so a
+// future upstream merge that removes batch.ts doesn't silently delete this import without
+// surfacing in the analyzer.
 import { BatchTool } from "./batch"
+// altimate_change end
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { TodoWriteTool, TodoReadTool } from "./todo"
@@ -208,7 +213,9 @@ export namespace ToolRegistry {
       SkillTool,
       ApplyPatchTool,
       ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
+      // altimate_change start — see import marker; conditional on experimental.batch_tool
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
+      // altimate_change end
       ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),
       // altimate_change start - register custom data engineering tools
       SqlExecuteTool,

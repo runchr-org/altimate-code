@@ -420,9 +420,14 @@ describe("session.llm.stream", () => {
         expect(body.stream).toBe(true)
         expect((body.reasoning as { effort?: string } | undefined)?.effort).toBe("high")
 
+        // altimate_change start — upstream PR #21225 moved the codex/copilot maxOutputTokens
+        // exclusion from session/llm.ts to the codex plugin chat.params hook. The hook applies
+        // to ALL `provider === "openai"` models (matches codex cli behavior), so the OpenAI
+        // /responses payload omits max_output_tokens. Our prior assertion expected the
+        // ProviderTransform value; align with upstream's "undefined → match codex cli" expectation.
         const maxTokens = body.max_output_tokens as number | undefined
-        const expectedMaxTokens = ProviderTransform.maxOutputTokens(resolved)
-        expect(maxTokens).toBe(expectedMaxTokens)
+        expect(maxTokens).toBe(undefined)
+        // altimate_change end
       },
     })
   })

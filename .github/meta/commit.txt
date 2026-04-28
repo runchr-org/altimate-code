@@ -1,57 +1,109 @@
-fix: bridge merge audit cycle 5 — sync transaction + service identifier collision
+fix: bridge merge audit cycle 6 — release ledger + 6 real bugs + 56 lock-in tests
 
-Surfaced two real bugs by walking the v1.3.17→v1.4.0 diff file-by-file
-(after Part 1 commit-by-commit pass). Cycles 1-4 didn't catch them.
+Cycle 6 deployed 5 agents in parallel with non-overlapping methodologies:
+- Per-release ledger walk (find what cycles 1-5 missed)
+- Differential CLI behavior testing (main vs merge branch)
+- Invariant test creation (lock in cycle 1-5 fixes)
+- Lockfile + dependency audit
+- Runtime stress test of SyncEvent + BusEvent bridge
 
-Bug 1 — sync immediate transaction was silently DEFERRED
-- `Database.transaction()` wrapper in `storage/db.ts` didn't accept any
-  options. Upstream's `SyncEvent.run` calls `Database.transaction(fn,
-  { behavior: "immediate" })` to get SQLite IMMEDIATE locking — needed for
-  the read-then-write event sequence to not race.
-- The comment in `sync/index.ts` even says "this is an 'immediate'
-  transaction which is critical" — but the code never enforced it.
-  Concurrent SyncEvent.run() calls could interleave and produce duplicate
-  sequence numbers / corrupt event log.
-- Added `TransactionConfig` type pass-through to `Database.transaction()`
-  and updated `SyncEvent.run` to actually pass `behavior: "immediate"`.
+Six real bugs surfaced — fixed in this commit:
 
-Bug 2 — duplicate Effect Service identifier `"@opencode/Account"`
-- `account/index.ts` and `account/service.ts` both registered a Service
-  class with id `"@opencode/Account"`. Two parallel ManagedRuntimes ran
-  with the same identifier — undefined merge behavior if anyone ever
-  combined the layers.
-- `account/service.ts`'s only consumer was `effect/runtime.ts`, which
-  itself had zero consumers — pure dead code.
-- Deleted `effect/runtime.ts` and `account/service.ts`. Same shape exists
-  for Auth (`auth/index.ts` + `auth/service.ts` both register
-  `"@opencode/Auth"`) but both are live; renamed `auth/index.ts`'s
-  identifier to `"@opencode/Auth.cli"` to disambiguate.
+1. **chat.params maxOutputTokens hook silently ignored** (Agent A HIGH).
+   Plugin types advertise `maxOutputTokens` as mutable output; codex.ts and
+   copilot.ts both write `output.maxOutputTokens = undefined`. But
+   `session/llm.ts:147` computed it AFTER the hook and never read
+   `params.maxOutputTokens` — so codex/copilot exclusion logic was a no-op
+   and any third-party plugin trying to alter maxOutputTokens did nothing.
+   Fix: pass the default into the hook, read back from `params` (matches
+   upstream PRs #21220 + #21225). Test updated to upstream expectation
+   (`undefined` for OpenAI to match codex cli behavior).
 
-Tests added (`test/upstream/bridge-merge-v3.test.ts`)
-- `Database.transaction` accepts behavior config (signature lock)
-- `SyncEvent.run` requests `behavior: "immediate"` (regex-asserted)
-- `account/service.ts` and `effect/runtime.ts` stay deleted
-- `auth/index.ts` uses distinct identifier from `auth/service.ts`
+2. **`mcp add` lost its 7-flag non-interactive mode** (Agent B HIGH —
+   script-breaking regression). main has `--name --type --url --command
+   --header --oauth --global` flags + non-interactive code path (~85
+   lines). Bridge merge overwrote `McpAddCommand` with upstream's
+   interactive-only version. Scripts/CI calling `mcp add --name foo
+   --type remote --url ...` either hung (no TTY) or silently dropped
+   into prompts ignoring args. Restored full block with altimate_change
+   markers; verified `mcp add --help` lists all 7 flags.
 
-Verification
+3. **`solid-js@1.9.10.patch` is a dead patch** (Agents A + D HIGH).
+   File is on disk but neither root nor opencode `package.json` declares
+   it in `patchedDependencies`. Upstream v1.4.0 declares it. Patch fixes
+   Solid Transition correctness (issue #2046) — UI state corruption under
+   Transitions, manifests rarely, hard to repro. Fix: add the
+   declaration; verified with `bun install`.
+
+4. **`mcp list` empty-state hint says "opencode mcp add"** (Agent B MED).
+   Brand leak from upstream string. Fix: rebrand to "altimate mcp add"
+   (matches main's behavior).
+
+5. **Alibaba/plain-text rate-limit retry not bridged** (Agent A MED, PR
+   #21355). `session/retry.ts` was missing the plain-text rate-limit
+   detection block. Alibaba/DashScope and other providers returning
+   non-JSON 429 responses weren't being retried. Fix: 13-line block
+   wrapped in altimate_change markers.
+
+6. **`BatchTool` import + registration unwrapped** (Agent A LOW).
+   Upstream deleted `tool/batch.ts` in PR #21052 (tool system refactor).
+   We kept `BatchTool` as an experimental flag-gated tool but the import
+   at `tool/registry.ts:7` and registration at `:211` were not wrapped
+   in altimate_change markers. Currently invisible to analyzer because
+   the lines existed on main, but a future re-bridge from current upstream
+   would silently lose them. Fix: wrap both with markers.
+
+Tests added (cycle 6, all passing):
+
+- `test/upstream/bridge-merge-invariants.test.ts` (Agent C — 39 tests):
+  cross-module consistency, async signature invariants, db/storage
+  invariants, schema shape invariants, build infrastructure invariants,
+  behavioral safety. Category breakdown:
+  - Service identifier uniqueness (cycle 5 lock-in)
+  - SyncEvent ⊆ BusEvent bridge (cycle 3 lock-in)
+  - Filesystem.containsReal in security-sensitive paths
+  - HTML escaping in OAuth/codex callback templates
+  - effect override pin, cross-spawn catalog, npm-package-arg deps
+  - PlanExitTool reject-on-anything-but-Yes (cycle 4)
+  - BusEvent.define idempotent (cycle 4)
+
+- `test/upstream/bridge-merge-runtime.test.ts` (Agent E — 17 tests):
+  - SyncEvent.define populates BusEvent registry at runtime
+  - SyncEvent payloads use unversioned type literals
+  - Database.transaction passes `behavior:"immediate"` through (monkey-
+    patches Bun client transaction to capture and assert)
+  - bun:sqlite IMMEDIATE mode serializes 10 parallel writers (proves
+    cycle 5's race fix works)
+  - SyncEvent.run rejects payload missing aggregate field
+  - No two ServiceMap.Service classes share an identifier (cycle 5)
+  - Runtime Promise checks for Account.active, MessageV2.toModelMessages,
+    SessionStatus.set, SessionPrompt.cancel
+  - PlanExitTool reject semantic via fs.readFile + comment-strip
+  - Question.RejectedError constructible
+
+Runtime test discovered minor docs reality:
+- `MessageV2.toModelMessages` requires `model.api.npm` to be set (no
+  defensive default at line 597) — not a cycle bug, worth knowing.
+- `BusEvent` registry is module-private; existing tests' fallback
+  `(BusEvent as any).registry` is dead code.
+
+Documented but NOT fixed in this PR (out of scope, RESUME doc tracks):
+- `Snapshot.FileDiff` schema split-brain (vcs.ts has new patch shape;
+  snapshot/index.ts + SDK still on before/after).
+- `Bun.serve` still in 3 places (server/server.ts, mcp/oauth-callback.ts,
+  plugin/codex.ts) — Hono node adapter migration #18335 deferred.
+- `--dangerously-skip-permissions` flag missing (we have `--yolo`).
+- PDF DnD (#16926), variant_list keybind (#21185), tool system refactor
+  (#21052), opentui 0.1.97 — all flagged earlier as intentional skips.
+- `@modelcontextprotocol/sdk@1.26.0` peer-asks `hono@^4.11.4` but we
+  hoist `hono@4.10.7` (Agent D MED).
+
+Verification:
 - Typecheck: 0 errors across 5 packages
-- Tests: 7719 pass / 503 skip / 7 fail (all pre-existing env timeouts)
-- Bridge regression suite: 177 tests across `test/upstream/`, all pass
-
-Coverage of this cycle
-- Part 1 (44 upstream commits): commit-by-commit; 5 real feature gaps,
-  4 intentional skips documented (PDF DnD, alibaba retry, variant_list
-  keybind, tool system refactor #21052, snapshot unified patches #21244)
-- Part 2 (high-risk file dirs): session/, provider/, bus/, sync/,
-  account/, effect/, permission/, mcp/, server/, control-plane/, tool/,
-  plugin/, acp/, agent/, npm/, skill/, storage/, question/, altimate/,
-  cli/cmd/ top-level + spot-checked tui/ (84 files)
-- Skipped: 87 test files, 11 SDK gen, util/lsp/ide/pty (low-risk)
-
-Pre-existing gaps surfaced (NOT this PR's scope)
-- `Format.file()` doesn't exist on altimate main — long-standing gap.
-- `mcp/index.ts` kept main version, didn't migrate to upstream's Effect
-  refactor (1771 lines diff vs upstream).
-- `server/server.ts` still on Bun.serve, Hono refactor #18335 skipped.
-- `@ai-sdk/*`, `@openrouter/ai-sdk-provider`, `@opentui/*` versions held
-  back from upstream bumps (cycle 2 documentation).
+- Tests: 8270 pass / 503 skip / 9 fail (all 9 pre-existing env timeouts:
+  3 compiled-binary smoke, 3 tool.registry, 1 tool.bash, 1 detectDataTools,
+  1 OPENCODE_CONFIG_DIR install — none caused by cycle 6 changes)
+- Bridge regression suite: **233 tests** across 7 files in `test/upstream/`
+  (was 177 before cycle 6: +39 invariants + 17 runtime). All pass.
+- Manual smoke: `mcp add --help` shows all 7 flags; `mcp list` shows
+  altimate brand; CLI dev mode runs.

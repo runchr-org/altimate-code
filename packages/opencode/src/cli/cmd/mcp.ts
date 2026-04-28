@@ -91,7 +91,7 @@ export const McpListCommand = cmd({
 
         if (servers.length === 0) {
           prompts.log.warn("No MCP servers configured")
-          prompts.outro("Add servers with: opencode mcp add")
+          prompts.outro("Add servers with: altimate mcp add")
           return
         }
 
@@ -424,10 +424,88 @@ async function addMcpToConfig(name: string, mcpConfig: Config.Mcp, configPath: s
 export const McpAddCommand = cmd({
   command: "add",
   describe: "add an MCP server",
-  async handler() {
+  // altimate_change start — restore non-interactive mode (--name/--type/--url/--command/--header/--oauth/--global)
+  // overwritten by v1.4.0 bridge merge. Scripts/CI rely on these flags to add MCP servers
+  // without TTY prompts; without them, `mcp add --name foo --type remote --url ...` falls
+  // through to interactive prompts and either hangs (no TTY) or ignores the args entirely.
+  // PR #53 originally added this on main; restore it as altimate_change so future merges
+  // don't silently drop it again.
+  builder: (yargs) =>
+    yargs
+      .option("name", { type: "string", describe: "MCP server name" })
+      .option("type", { type: "string", describe: "Server type", choices: ["local", "remote"] })
+      .option("url", { type: "string", describe: "Server URL (for remote type)" })
+      .option("command", { type: "string", describe: "Command to run (for local type)" })
+      .option("header", { type: "array", string: true, describe: "HTTP headers as key=value (repeatable)" })
+      .option("oauth", { type: "boolean", describe: "Enable OAuth", default: true })
+      .option("global", { type: "boolean", describe: "Add to global config", default: false }),
+  async handler(args) {
     await Instance.provide({
       directory: process.cwd(),
       async fn() {
+        // Non-interactive mode: all required args provided via flags
+        if (args.name && args.type) {
+          if (!args.name.trim()) {
+            console.error("MCP server name cannot be empty")
+            process.exitCode = 1
+            return
+          }
+
+          const useGlobal = args.global || Instance.project.vcs !== "git"
+          const configPath = await resolveConfigPath(useGlobal ? Global.Path.config : Instance.worktree, useGlobal)
+
+          let mcpConfig: Config.Mcp
+
+          if (args.type === "local") {
+            if (!args.command?.trim()) {
+              console.error("--command is required for local type")
+              process.exitCode = 1
+              return
+            }
+            mcpConfig = {
+              type: "local",
+              command: args.command.trim().split(/\s+/).filter(Boolean),
+            }
+          } else {
+            if (!args.url) {
+              console.error("--url is required for remote type")
+              process.exitCode = 1
+              return
+            }
+            if (!URL.canParse(args.url)) {
+              console.error(`Invalid URL: ${args.url}`)
+              process.exitCode = 1
+              return
+            }
+
+            const headers: Record<string, string> = {}
+            if (args.header) {
+              for (const h of args.header as string[]) {
+                const eq = h.indexOf("=")
+                if (eq === -1) {
+                  console.error(`Invalid header format: ${h} (expected key=value)`)
+                  process.exitCode = 1
+                  return
+                }
+                headers[h.substring(0, eq)] = h.substring(eq + 1)
+              }
+            }
+
+            mcpConfig = {
+              type: "remote",
+              url: args.url,
+              ...(!args.oauth ? { oauth: false as const } : {}),
+              ...(Object.keys(headers).length > 0 ? { headers } : {}),
+            }
+          }
+
+          await addMcpToConfig(args.name, mcpConfig, configPath)
+          console.log(`MCP server "${args.name}" added to ${configPath}`)
+          return
+        }
+
+        // Interactive mode (fallback when flags not provided)
+        // altimate_change end
         UI.empty()
         prompts.intro("Add MCP server")
 

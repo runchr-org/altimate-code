@@ -75,6 +75,21 @@ export namespace SessionRetry {
       return error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message
     }
 
+    // altimate_change start — bridge upstream PR #21355: detect plain-text rate-limit
+    // messages so providers (Alibaba/DashScope, etc.) that return non-JSON 429s get retried.
+    const msg = error.data?.message
+    if (typeof msg === "string") {
+      const lower = msg.toLowerCase()
+      if (
+        lower.includes("rate increased too quickly") ||
+        lower.includes("rate limit") ||
+        lower.includes("too many requests")
+      ) {
+        return msg
+      }
+    }
+    // altimate_change end
+
     const json = iife(() => {
       try {
         if (typeof error.data?.message === "string") {
