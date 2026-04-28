@@ -24,9 +24,6 @@ import type {
   EventTuiPromptAppend,
   EventTuiSessionSelect,
   EventTuiToastShow,
-  ExperimentalConsoleGetResponses,
-  ExperimentalConsoleListOrgsResponses,
-  ExperimentalConsoleSwitchOrgResponses,
   ExperimentalResourceListResponses,
   ExperimentalSessionListResponses,
   ExperimentalWorkspaceCreateErrors,
@@ -49,9 +46,6 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
-  GlobalSyncEventSubscribeResponses,
-  GlobalUpgradeErrors,
-  GlobalUpgradeResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
   McpAddErrors,
@@ -178,7 +172,6 @@ import type {
   TuiSelectSessionResponses,
   TuiShowToastResponses,
   TuiSubmitPromptResponses,
-  VcsDiffResponses,
   VcsGetResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
@@ -235,25 +228,11 @@ class HeyApiRegistry<T> {
   }
 }
 
-export class SyncEvent extends HeyApiClient {
-  /**
-   * Subscribe to global sync events
-   *
-   * Get global sync events
-   */
-  public subscribe<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).sse.get<GlobalSyncEventSubscribeResponses, unknown, ThrowOnError>({
-      url: "/global/sync-event",
-      ...options,
-    })
-  }
-}
-
 export class Config extends HeyApiClient {
   /**
    * Get global configuration
    *
-   * Retrieve the current global OpenCode configuration settings and preferences.
+   * Retrieve the current global Altimate Code configuration settings and preferences.
    */
   public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalConfigGetResponses, unknown, ThrowOnError>({
@@ -265,7 +244,7 @@ export class Config extends HeyApiClient {
   /**
    * Update global configuration
    *
-   * Update global OpenCode configuration settings and preferences.
+   * Update global Altimate Code configuration settings and preferences.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -291,7 +270,7 @@ export class Global extends HeyApiClient {
   /**
    * Get health
    *
-   * Get health information about the OpenCode server.
+   * Get health information about the Altimate Code server.
    */
   public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalHealthResponses, unknown, ThrowOnError>({
@@ -303,7 +282,7 @@ export class Global extends HeyApiClient {
   /**
    * Get global events
    *
-   * Subscribe to global events from the OpenCode system using server-sent events.
+   * Subscribe to global events from the Altimate Code system using server-sent events.
    */
   public event<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).sse.get<GlobalEventResponses, unknown, ThrowOnError>({
@@ -315,42 +294,13 @@ export class Global extends HeyApiClient {
   /**
    * Dispose instance
    *
-   * Clean up and dispose all OpenCode instances, releasing all resources.
+   * Clean up and dispose all Altimate Code instances, releasing all resources.
    */
   public dispose<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<GlobalDisposeResponses, unknown, ThrowOnError>({
       url: "/global/dispose",
       ...options,
     })
-  }
-
-  /**
-   * Upgrade opencode
-   *
-   * Upgrade opencode to the specified version or latest if not specified.
-   */
-  public upgrade<ThrowOnError extends boolean = false>(
-    parameters?: {
-      target?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "target" }] }])
-    return (options?.client ?? this.client).post<GlobalUpgradeResponses, GlobalUpgradeErrors, ThrowOnError>({
-      url: "/global/upgrade",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  private _syncEvent?: SyncEvent
-  get syncEvent(): SyncEvent {
-    return (this._syncEvent ??= new SyncEvent({ client: this.client }))
   }
 
   private _config?: Config
@@ -415,118 +365,11 @@ export class Auth extends HeyApiClient {
   }
 }
 
-export class App extends HeyApiClient {
-  /**
-   * Write log
-   *
-   * Write a log entry to the server logs with specified level and metadata.
-   */
-  public log<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-      service?: string
-      level?: "debug" | "info" | "error" | "warn"
-      message?: string
-      extra?: {
-        [key: string]: unknown
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-            { in: "body", key: "service" },
-            { in: "body", key: "level" },
-            { in: "body", key: "message" },
-            { in: "body", key: "extra" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<AppLogResponses, AppLogErrors, ThrowOnError>({
-      url: "/log",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * List agents
-   *
-   * Get a list of all available AI agents in the OpenCode system.
-   */
-  public agents<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
-      url: "/agent",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List skills
-   *
-   * Get a list of all available skills in the OpenCode system.
-   */
-  public skills<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<AppSkillsResponses, unknown, ThrowOnError>({
-      url: "/skill",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Project extends HeyApiClient {
   /**
    * List all projects
    *
-   * Get a list of projects that have been opened with OpenCode.
+   * Get a list of projects that have been opened with Altimate Code.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -556,7 +399,7 @@ export class Project extends HeyApiClient {
   /**
    * Get current project
    *
-   * Retrieve the currently active project that OpenCode is working with.
+   * Retrieve the currently active project that Altimate Code is working with.
    */
   public current<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -670,7 +513,7 @@ export class Pty extends HeyApiClient {
   /**
    * List PTY sessions
    *
-   * Get a list of all active pseudo-terminal (PTY) sessions managed by OpenCode.
+   * Get a list of all active pseudo-terminal (PTY) sessions managed by Altimate Code.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -889,7 +732,7 @@ export class Config2 extends HeyApiClient {
   /**
    * Get configuration
    *
-   * Retrieve the current OpenCode configuration settings and preferences.
+   * Retrieve the current Altimate Code configuration settings and preferences.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -919,7 +762,7 @@ export class Config2 extends HeyApiClient {
   /**
    * Update configuration
    *
-   * Update OpenCode configuration settings and preferences.
+   * Update Altimate Code configuration settings and preferences.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -984,13 +827,13 @@ export class Config2 extends HeyApiClient {
   }
 }
 
-export class Console extends HeyApiClient {
+export class Tool extends HeyApiClient {
   /**
-   * Get active Console provider metadata
+   * List tool IDs
    *
-   * Get the active Console org name and the set of provider IDs managed by that Console org.
+   * Get a list of all available tool IDs, including both built-in tools and dynamically registered tools.
    */
-  public get<ThrowOnError extends boolean = false>(
+  public ids<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       workspace?: string
@@ -1008,22 +851,24 @@ export class Console extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ExperimentalConsoleGetResponses, unknown, ThrowOnError>({
-      url: "/experimental/console",
+    return (options?.client ?? this.client).get<ToolIdsResponses, ToolIdsErrors, ThrowOnError>({
+      url: "/experimental/tool/ids",
       ...options,
       ...params,
     })
   }
 
   /**
-   * List switchable Console orgs
+   * List tools
    *
-   * Get the available Console orgs across logged-in accounts, including the current active org.
+   * Get a list of available tools with their JSON schema parameters for a specific provider and model combination.
    */
-  public listOrgs<ThrowOnError extends boolean = false>(
-    parameters?: {
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
       directory?: string
       workspace?: string
+      provider: string
+      model: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1034,53 +879,16 @@ export class Console extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "query", key: "provider" },
+            { in: "query", key: "model" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).get<ExperimentalConsoleListOrgsResponses, unknown, ThrowOnError>({
-      url: "/experimental/console/orgs",
+    return (options?.client ?? this.client).get<ToolListResponses, ToolListErrors, ThrowOnError>({
+      url: "/experimental/tool",
       ...options,
       ...params,
-    })
-  }
-
-  /**
-   * Switch active Console org
-   *
-   * Persist a new active Console account/org selection for the current local OpenCode state.
-   */
-  public switchOrg<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-      accountID?: string
-      orgID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-            { in: "body", key: "accountID" },
-            { in: "body", key: "orgID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ExperimentalConsoleSwitchOrgResponses, unknown, ThrowOnError>({
-      url: "/experimental/console/switch",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
     })
   }
 }
@@ -1204,7 +1012,7 @@ export class Session extends HeyApiClient {
   /**
    * List sessions
    *
-   * Get a list of all OpenCode sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.
+   * Get a list of all Altimate Code sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1277,11 +1085,6 @@ export class Resource extends HeyApiClient {
 }
 
 export class Experimental extends HeyApiClient {
-  private _console?: Console
-  get console(): Console {
-    return (this._console ??= new Console({ client: this.client }))
-  }
-
   private _workspace?: Workspace
   get workspace(): Workspace {
     return (this._workspace ??= new Workspace({ client: this.client }))
@@ -1295,72 +1098,6 @@ export class Experimental extends HeyApiClient {
   private _resource?: Resource
   get resource(): Resource {
     return (this._resource ??= new Resource({ client: this.client }))
-  }
-}
-
-export class Tool extends HeyApiClient {
-  /**
-   * List tool IDs
-   *
-   * Get a list of all available tool IDs, including both built-in tools and dynamically registered tools.
-   */
-  public ids<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ToolIdsResponses, ToolIdsErrors, ThrowOnError>({
-      url: "/experimental/tool/ids",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List tools
-   *
-   * Get a list of available tools with their JSON schema parameters for a specific provider and model combination.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      workspace?: string
-      provider: string
-      model: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-            { in: "query", key: "provider" },
-            { in: "query", key: "model" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ToolListResponses, ToolListErrors, ThrowOnError>({
-      url: "/experimental/tool",
-      ...options,
-      ...params,
-    })
   }
 }
 
@@ -1511,7 +1248,7 @@ export class Session2 extends HeyApiClient {
   /**
    * List sessions
    *
-   * Get a list of all OpenCode sessions, sorted by most recently updated.
+   * Get a list of all Altimate Code sessions, sorted by most recently updated.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1549,7 +1286,7 @@ export class Session2 extends HeyApiClient {
   /**
    * Create session
    *
-   * Create a new OpenCode session for interacting with AI assistants and managing conversations.
+   * Create a new Altimate Code session for interacting with AI assistants and managing conversations.
    */
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1654,7 +1391,7 @@ export class Session2 extends HeyApiClient {
   /**
    * Get session
    *
-   * Retrieve detailed information about a specific OpenCode session.
+   * Retrieve detailed information about a specific Altimate Code session.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2341,7 +2078,6 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       workspace?: string
-      messageID?: string
       agent?: string
       model?: {
         providerID: string
@@ -2359,7 +2095,6 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
-            { in: "body", key: "messageID" },
             { in: "body", key: "agent" },
             { in: "body", key: "model" },
             { in: "body", key: "command" },
@@ -2761,9 +2496,6 @@ export class Oauth extends HeyApiClient {
       directory?: string
       workspace?: string
       method?: number
-      inputs?: {
-        [key: string]: string
-      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2776,7 +2508,6 @@ export class Oauth extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
             { in: "body", key: "method" },
-            { in: "body", key: "inputs" },
           ],
         },
       ],
@@ -3104,38 +2835,6 @@ export class File extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<FileStatusResponses, unknown, ThrowOnError>({
       url: "/file/status",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Event extends HeyApiClient {
-  /**
-   * Subscribe to events
-   *
-   * Get events
-   */
-  public subscribe<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).sse.get<EventSubscribeResponses, unknown, ThrowOnError>({
-      url: "/event",
       ...options,
       ...params,
     })
@@ -3868,7 +3567,7 @@ export class Instance extends HeyApiClient {
   /**
    * Dispose instance
    *
-   * Clean up and dispose the current OpenCode instance, releasing all resources.
+   * Clean up and dispose the current Altimate Code instance, releasing all resources.
    */
   public dispose<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3900,7 +3599,7 @@ export class Path extends HeyApiClient {
   /**
    * Get paths
    *
-   * Retrieve the current working directory and related path information for the OpenCode instance.
+   * Retrieve the current working directory and related path information for the Altimate Code instance.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3958,45 +3657,13 @@ export class Vcs extends HeyApiClient {
       ...params,
     })
   }
-
-  /**
-   * Get VCS diff
-   *
-   * Retrieve the current git diff for the working tree or against the default branch.
-   */
-  public diff<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      workspace?: string
-      mode: "git" | "branch"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-            { in: "query", key: "mode" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<VcsDiffResponses, unknown, ThrowOnError>({
-      url: "/vcs/diff",
-      ...options,
-      ...params,
-    })
-  }
 }
 
 export class Command extends HeyApiClient {
   /**
    * List commands
    *
-   * Get a list of all available commands in the OpenCode system.
+   * Get a list of all available commands in the Altimate Code system.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -4018,6 +3685,113 @@ export class Command extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<CommandListResponses, unknown, ThrowOnError>({
       url: "/command",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class App extends HeyApiClient {
+  /**
+   * Write log
+   *
+   * Write a log entry to the server logs with specified level and metadata.
+   */
+  public log<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      service?: string
+      level?: "debug" | "info" | "error" | "warn"
+      message?: string
+      extra?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "service" },
+            { in: "body", key: "level" },
+            { in: "body", key: "message" },
+            { in: "body", key: "extra" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppLogResponses, AppLogErrors, ThrowOnError>({
+      url: "/log",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List agents
+   *
+   * Get a list of all available AI agents in the Altimate Code system.
+   */
+  public agents<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
+      url: "/agent",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List skills
+   *
+   * Get a list of all available skills in the Altimate Code system.
+   */
+  public skills<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppSkillsResponses, unknown, ThrowOnError>({
+      url: "/skill",
       ...options,
       ...params,
     })
@@ -4088,6 +3862,38 @@ export class Formatter extends HeyApiClient {
   }
 }
 
+export class Event extends HeyApiClient {
+  /**
+   * Subscribe to events
+   *
+   * Get events
+   */
+  public subscribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).sse.get<EventSubscribeResponses, unknown, ThrowOnError>({
+      url: "/event",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class OpencodeClient extends HeyApiClient {
   public static readonly __registry = new HeyApiRegistry<OpencodeClient>()
 
@@ -4106,11 +3912,6 @@ export class OpencodeClient extends HeyApiClient {
     return (this._auth ??= new Auth({ client: this.client }))
   }
 
-  private _app?: App
-  get app(): App {
-    return (this._app ??= new App({ client: this.client }))
-  }
-
   private _project?: Project
   get project(): Project {
     return (this._project ??= new Project({ client: this.client }))
@@ -4126,14 +3927,14 @@ export class OpencodeClient extends HeyApiClient {
     return (this._config ??= new Config2({ client: this.client }))
   }
 
-  private _experimental?: Experimental
-  get experimental(): Experimental {
-    return (this._experimental ??= new Experimental({ client: this.client }))
-  }
-
   private _tool?: Tool
   get tool(): Tool {
     return (this._tool ??= new Tool({ client: this.client }))
+  }
+
+  private _experimental?: Experimental
+  get experimental(): Experimental {
+    return (this._experimental ??= new Experimental({ client: this.client }))
   }
 
   private _worktree?: Worktree
@@ -4176,11 +3977,6 @@ export class OpencodeClient extends HeyApiClient {
     return (this._file ??= new File({ client: this.client }))
   }
 
-  private _event?: Event
-  get event(): Event {
-    return (this._event ??= new Event({ client: this.client }))
-  }
-
   private _mcp?: Mcp
   get mcp(): Mcp {
     return (this._mcp ??= new Mcp({ client: this.client }))
@@ -4211,6 +4007,11 @@ export class OpencodeClient extends HeyApiClient {
     return (this._command ??= new Command({ client: this.client }))
   }
 
+  private _app?: App
+  get app(): App {
+    return (this._app ??= new App({ client: this.client }))
+  }
+
   private _lsp?: Lsp
   get lsp(): Lsp {
     return (this._lsp ??= new Lsp({ client: this.client }))
@@ -4219,5 +4020,10 @@ export class OpencodeClient extends HeyApiClient {
   private _formatter?: Formatter
   get formatter(): Formatter {
     return (this._formatter ??= new Formatter({ client: this.client }))
+  }
+
+  private _event?: Event
+  get event(): Event {
+    return (this._event ??= new Event({ client: this.client }))
   }
 }

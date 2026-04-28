@@ -259,7 +259,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             focusedTextColor={theme.textMuted}
             ref={(r) => {
               input = r
-              input.traits = { status: "FILTER" }
+              ;(input as any).traits = { status: "FILTER" }
               setTimeout(() => {
                 if (!input) return
                 if (input.isDestroyed) return

@@ -169,7 +169,7 @@ export function Prompt(props: PromptProps) {
       if (msg.agent && isPrimaryAgent) {
         local.agent.set(msg.agent)
         if (msg.model) local.model.set(msg.model)
-        if (msg.model?.variant) local.model.variant.set(msg.model.variant)
+        if (msg.variant) local.model.variant.set(msg.variant)
       }
     }
   })
@@ -1024,8 +1024,7 @@ export function Prompt(props: PromptProps) {
                 // Normalize line endings at the boundary
                 // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste
                 // Replace CRLF first, then any remaining CR
-                const pastedText = new TextDecoder().decode(event.bytes)
-                const normalizedText = pastedText.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+                const normalizedText = event.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
                 const pastedContent = normalizedText.trim()
                 if (!pastedContent) {
                   command.trigger("prompt.paste")

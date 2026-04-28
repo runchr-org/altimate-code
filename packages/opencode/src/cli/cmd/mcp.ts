@@ -15,6 +15,9 @@ import { Global } from "../../global"
 import { modify, applyEdits } from "jsonc-parser"
 import { Filesystem } from "../../util/filesystem"
 import { Bus } from "../../bus"
+// altimate_change start — restore removeMcpFromConfig helper used by McpRemoveCommand
+import { removeMcpFromConfig } from "../../mcp/config"
+// altimate_change end
 
 function getAuthStatusIcon(status: MCP.AuthStatus): string {
   switch (status) {
@@ -59,6 +62,9 @@ export const McpCommand = cmd({
       .command(McpListCommand)
       .command(McpAuthCommand)
       .command(McpLogoutCommand)
+      // altimate_change start — restore `mcp remove` removed during v1.4.0 bridge merge
+      .command(McpRemoveCommand)
+      // altimate_change end
       .command(McpDebugCommand)
       .demandCommand(),
   async handler() {},
@@ -578,6 +584,57 @@ export const McpAddCommand = cmd({
     })
   },
 })
+
+// altimate_change start — restore `mcp remove` command removed during v1.4.0 bridge merge
+export const McpRemoveCommand = cmd({
+  command: "remove <name>",
+  aliases: ["rm"],
+  describe: "remove an MCP server",
+  builder: (yargs) =>
+    yargs
+      .positional("name", {
+        describe: "name of the MCP server to remove",
+        type: "string",
+        demandOption: true,
+      })
+      .option("global", { type: "boolean", describe: "Remove from global config", default: false }),
+  async handler(args) {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const useGlobal = args.global || Instance.project.vcs !== "git"
+        const configPath = await resolveConfigPath(useGlobal ? Global.Path.config : Instance.worktree, useGlobal)
+
+        const removed = await removeMcpFromConfig(args.name, configPath)
+        if (removed) {
+          console.log(`MCP server "${args.name}" removed from ${configPath}`)
+        } else if (Instance.project.vcs === "git" && !args.global) {
+          const globalPath = await resolveConfigPath(Global.Path.config, true)
+          const removedGlobal = await removeMcpFromConfig(args.name, globalPath)
+          if (removedGlobal) {
+            console.log(`MCP server "${args.name}" removed from ${globalPath}`)
+          } else {
+            console.error(`MCP server "${args.name}" not found in any config`)
+            process.exit(1)
+          }
+        } else if (args.global && Instance.project.vcs === "git") {
+          const localPath = await resolveConfigPath(Instance.worktree, false)
+          const removedLocal = await removeMcpFromConfig(args.name, localPath)
+          if (removedLocal) {
+            console.log(`MCP server "${args.name}" removed from ${localPath}`)
+          } else {
+            console.error(`MCP server "${args.name}" not found in any config`)
+            process.exit(1)
+          }
+        } else {
+          console.error(`MCP server "${args.name}" not found in any config`)
+          process.exit(1)
+        }
+      },
+    })
+  },
+})
+// altimate_change end
 
 export const McpDebugCommand = cmd({
   command: "debug <name>",

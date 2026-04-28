@@ -90,9 +90,11 @@ function resolvePackageFile(spec: string, raw: string, kind: string, pkg: Plugin
   const resolved = resolveExportPath(raw, pkg.dir)
   const root = Filesystem.resolve(pkg.dir)
   const next = Filesystem.resolve(resolved)
-  if (!Filesystem.contains(root, next)) {
+  // altimate_change start — symlink-aware containment check; lexical contains() can be bypassed via symlink escape
+  if (!Filesystem.containsReal(root, next)) {
     throw new Error(`Plugin ${spec} resolved ${kind} entry outside plugin directory`)
   }
+  // altimate_change end
   return next
 }
 

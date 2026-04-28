@@ -605,8 +605,7 @@ export namespace MessageV2 {
       return false
     })()
 
-    const toModelOutput = (options: { toolCallId: string; input: unknown; output: unknown }) => {
-      const output = options.output
+    const toModelOutput = (output: unknown) => {
       if (typeof output === "string") {
         return { type: "text", value: output }
       }
@@ -804,7 +803,7 @@ export namespace MessageV2 {
 
     const tools = Object.fromEntries(Array.from(toolNames).map((toolName) => [toolName, { toModelOutput }]))
 
-    return yield* Effect.promise(() =>
+    return yield* Effect.sync(() =>
       convertToModelMessages(
         result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")),
         {

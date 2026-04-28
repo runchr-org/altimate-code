@@ -522,7 +522,7 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
         <textarea
           ref={(val: TextareaRenderable) => {
             input = val
-            val.traits = { status: "REJECT" }
+            ;(val as any).traits = { status: "REJECT" }
           }}
           focused
           textColor={theme.text}

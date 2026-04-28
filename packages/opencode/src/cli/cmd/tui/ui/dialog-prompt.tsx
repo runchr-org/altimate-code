@@ -51,7 +51,7 @@ export function DialogPrompt(props: DialogPromptProps) {
           status: "BUSY",
         }
       : {}
-    textarea.traits = traits
+    ;(textarea as any).traits = traits
     if (props.busy) {
       textarea.blur()
       return

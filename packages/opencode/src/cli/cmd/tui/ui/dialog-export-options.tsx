@@ -102,7 +102,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           keyBindings={[{ name: "return", action: "submit" }]}
           ref={(val: TextareaRenderable) => {
             textarea = val
-            val.traits = { status: "FILENAME" }
+            ;(val as any).traits = { status: "FILENAME" }
           }}
           initialValue={props.defaultFilename}
           placeholder="Enter filename"

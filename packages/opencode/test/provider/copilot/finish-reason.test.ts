@@ -1,4 +1,3 @@
-// @ts-nocheck — DRAFT bridge merge: SDK type drift between v1.3.17 and v1.4.0; runtime behavior still tested
 import { describe, test, expect } from "bun:test"
 import { mapOpenAICompatibleFinishReason } from "../../../src/provider/sdk/copilot/chat/map-openai-compatible-finish-reason"
 import { mapOpenAIResponseFinishReason } from "../../../src/provider/sdk/copilot/responses/map-openai-responses-finish-reason"
@@ -29,19 +28,19 @@ describe("mapOpenAICompatibleFinishReason", () => {
   })
 
   test("maps null to 'unknown'", () => {
-    expect(mapOpenAICompatibleFinishReason(null)).toBe("other")
+    expect(mapOpenAICompatibleFinishReason(null)).toBe("unknown")
   })
 
   test("maps undefined to 'unknown'", () => {
-    expect(mapOpenAICompatibleFinishReason(undefined)).toBe("other")
+    expect(mapOpenAICompatibleFinishReason(undefined)).toBe("unknown")
   })
 
   test("maps empty string to 'unknown'", () => {
-    expect(mapOpenAICompatibleFinishReason("")).toBe("other")
+    expect(mapOpenAICompatibleFinishReason("")).toBe("unknown")
   })
 
   test("maps unrecognized string to 'unknown'", () => {
-    expect(mapOpenAICompatibleFinishReason("something_else")).toBe("other")
+    expect(mapOpenAICompatibleFinishReason("something_else")).toBe("unknown")
   })
 })
 
@@ -81,7 +80,7 @@ describe("mapOpenAIResponseFinishReason", () => {
   })
 
   test("unknown string without function call returns 'unknown'", () => {
-    expect(mapOpenAIResponseFinishReason({ finishReason: "something_else", hasFunctionCall: false })).toBe("other")
+    expect(mapOpenAIResponseFinishReason({ finishReason: "something_else", hasFunctionCall: false })).toBe("unknown")
   })
 
   test("unknown string with function call returns 'tool-calls'", () => {

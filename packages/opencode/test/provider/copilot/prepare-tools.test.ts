@@ -1,4 +1,3 @@
-// @ts-nocheck — DRAFT bridge merge: SDK type drift between v1.3.17 and v1.4.0; runtime behavior still tested
 import { describe, test, expect } from "bun:test"
 import { prepareTools } from "../../../src/provider/sdk/copilot/chat/openai-compatible-prepare-tools"
 
