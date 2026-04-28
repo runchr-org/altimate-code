@@ -380,6 +380,29 @@ export interface SchemaIndexResult {
   tables_indexed: number
   columns_indexed: number
   timestamp: string
+  /**
+   * Entity-per-table groups detected during indexing. Each group represents
+   * many tables sharing the same column structure that the cache collapsed
+   * into a single composite digest.
+   */
+  entity_groups?: SchemaEntityGroupSummary[]
+}
+
+/**
+ * Summary of a single entity-per-table group. The cache emits one of these
+ * per (database, schema) when ≥50% of tables share an identical column
+ * structure and the group has at least 20 tables.
+ */
+export interface SchemaEntityGroupSummary {
+  warehouse: string
+  database?: string
+  schema_name: string
+  /** Always "entity-per-table" — left as a field for forward compat. */
+  pattern: string
+  table_count: number
+  composite_columns: { name: string; data_type: string }[]
+  sample_table: string
+  table_names: string[]
 }
 
 export interface SchemaSearchParams {
@@ -414,6 +437,24 @@ export interface SchemaSearchResult {
   columns: SchemaSearchColumnResult[]
   query: string
   match_count: number
+  /**
+   * Entity-per-table groups whose composite columns or member table names
+   * matched the query. Populated by schema.search so users can still find
+   * specific tables by name even when they were collapsed into a digest.
+   */
+  entity_groups?: SchemaSearchEntityGroupResult[]
+}
+
+export interface SchemaSearchEntityGroupResult {
+  warehouse: string
+  database?: string
+  schema_name: string
+  pattern: string
+  table_count: number
+  composite_columns: { name: string; data_type: string }[]
+  sample_table: string
+  /** Tables in this group whose names matched the query (subset). */
+  matching_tables: string[]
 }
 
 export interface SchemaCacheStatusParams {}

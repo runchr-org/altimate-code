@@ -24,7 +24,7 @@ export const SchemaSearchTool = Tool.define("schema_search", {
       if (result.match_count === 0) {
         return {
           title: `Schema Search: "${args.query}" — no results`,
-          metadata: { matchCount: 0, tableCount: 0, columnCount: 0 },
+          metadata: { matchCount: 0, tableCount: 0, columnCount: 0, entityGroupCount: 0 },
           output: `No tables or columns matching "${args.query}" found in the schema cache.\n\nMake sure you've run schema_index first to populate the cache.`,
         }
       }
@@ -35,6 +35,7 @@ export const SchemaSearchTool = Tool.define("schema_search", {
           matchCount: result.match_count,
           tableCount: result.tables.length,
           columnCount: result.columns.length,
+          entityGroupCount: result.entity_groups?.length ?? 0,
         },
         output: formatSearchResult(result),
       }
@@ -70,6 +71,27 @@ function formatSearchResult(result: SchemaSearchResult): string {
     lines.push("----|------|--------")
     for (const c of result.columns) {
       lines.push(`${c.fqn} | ${c.data_type ?? "unknown"} | ${c.nullable ? "YES" : "NO"}`)
+    }
+    lines.push("")
+  }
+
+  if (result.entity_groups && result.entity_groups.length > 0) {
+    lines.push(`## Entity-per-table Groups (${result.entity_groups.length} matches)`)
+    lines.push("")
+    for (const g of result.entity_groups) {
+      const fqSchema = g.database ? `${g.database}.${g.schema_name}` : g.schema_name
+      lines.push(`schema: ${fqSchema}  (warehouse: ${g.warehouse})`)
+      lines.push(`pattern: ${g.pattern}`)
+      lines.push(`table_count: ${g.table_count}`)
+      const cols = g.composite_columns
+        .map((c) => `{name: "${c.name}", type: "${c.data_type}"}`)
+        .join(", ")
+      lines.push(`composite_columns: [${cols}]`)
+      lines.push(`sample_table: ${g.sample_table}`)
+      if (g.matching_tables.length > 0) {
+        lines.push(`matching_tables: [${g.matching_tables.join(", ")}]`)
+      }
+      lines.push("")
     }
   }
 

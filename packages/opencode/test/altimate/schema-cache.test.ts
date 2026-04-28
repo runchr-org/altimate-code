@@ -685,6 +685,218 @@ describe("SQLite driver PRAGMA handling", () => {
 // 13. SQLite driver — readonly connection handling
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 14. Entity-per-table digest integration
+// ---------------------------------------------------------------------------
+
+describe("entity-per-table digest", () => {
+  /** Connector returning N tables in the same schema, all with the same columns. */
+  function entityConnector(
+    tableNames: string[],
+    sharedColumns: { name: string; data_type: string; nullable?: boolean }[],
+    extraTables: Record<string, string[]> = {},
+  ): Connector {
+    return {
+      async connect() {},
+      async execute() { return { columns: [], rows: [], row_count: 0, truncated: false } },
+      async listSchemas() { return ["public"] },
+      async listTables(schema: string) {
+        if (schema !== "public") return []
+        const all = [
+          ...tableNames.map((name) => ({ name, type: "TABLE" })),
+          ...Object.keys(extraTables).map((name) => ({ name, type: "TABLE" })),
+        ]
+        return all
+      },
+      async describeTable(schema: string, table: string) {
+        if (schema !== "public") return []
+        if (extraTables[table]) {
+          return extraTables[table].map((name) => ({
+            name,
+            data_type: "TEXT",
+            nullable: true,
+          }))
+        }
+        return sharedColumns.map((c) => ({
+          name: c.name,
+          data_type: c.data_type,
+          nullable: c.nullable ?? true,
+        }))
+      },
+      async close() {},
+    }
+  }
+
+  test("30 identical-schema tables collapse into one entity group", async () => {
+    const cache = SchemaCache.createInMemory()
+    const tickerNames = Array.from({ length: 30 }, (_, i) => `TICKER_${i}`)
+    const cols = [
+      { name: "Date", data_type: "VARCHAR" },
+      { name: "Open", data_type: "DOUBLE" },
+      { name: "High", data_type: "DOUBLE" },
+      { name: "Low", data_type: "DOUBLE" },
+      { name: "Close", data_type: "DOUBLE" },
+    ]
+    const connector = entityConnector(tickerNames, cols)
+
+    const result = await cache.indexWarehouse("stock-wh", "duckdb", connector)
+
+    // All 30 tables counted, but they should NOT be in tables_cache —
+    // they're collapsed into the entity_groups_cache row.
+    expect(result.tables_indexed).toBe(30)
+    expect(result.columns_indexed).toBe(30 * 5)
+    expect(result.entity_groups).toBeDefined()
+    expect(result.entity_groups).toHaveLength(1)
+    const grp = result.entity_groups![0]
+    expect(grp.pattern).toBe("entity-per-table")
+    expect(grp.table_count).toBe(30)
+    expect(grp.composite_columns).toHaveLength(5)
+    expect(grp.table_names).toHaveLength(30)
+    expect(grp.sample_table).toBe("TICKER_0")
+
+    // Per-table cache rows should be empty for collapsed tables.
+    const tableSearch = cache.search("TICKER_5")
+    expect(tableSearch.tables).toHaveLength(0)
+    // But the entity group should match.
+    expect(tableSearch.entity_groups).toBeDefined()
+    expect(tableSearch.entity_groups).toHaveLength(1)
+    expect(tableSearch.entity_groups![0].matching_tables).toContain("TICKER_5")
+
+    cache.close()
+  })
+
+  test("collapsed tables are searchable by name via entity group", async () => {
+    const cache = SchemaCache.createInMemory()
+    const names = Array.from({ length: 25 }, (_, i) => `STK_${i}`)
+    const cols = [
+      { name: "id", data_type: "INT" },
+      { name: "value", data_type: "FLOAT" },
+    ]
+    await cache.indexWarehouse("wh", "pg", entityConnector(names, cols))
+
+    const r = cache.search("STK_7")
+    expect(r.match_count).toBeGreaterThan(0)
+    expect(r.entity_groups).toBeDefined()
+    expect(r.entity_groups![0].matching_tables).toContain("STK_7")
+
+    cache.close()
+  })
+
+  test("composite columns are searchable", async () => {
+    const cache = SchemaCache.createInMemory()
+    const names = Array.from({ length: 25 }, (_, i) => `T${i}`)
+    const cols = [
+      { name: "uniq_marker_col", data_type: "VARCHAR" },
+      { name: "v", data_type: "INT" },
+    ]
+    await cache.indexWarehouse("wh", "pg", entityConnector(names, cols))
+
+    const r = cache.search("uniq_marker_col")
+    expect(r.entity_groups).toBeDefined()
+    expect(r.entity_groups!.length).toBeGreaterThan(0)
+    cache.close()
+  })
+
+  test("non-entity tables still emit per-table when mixed with entity group", async () => {
+    const cache = SchemaCache.createInMemory()
+    const tickerNames = Array.from({ length: 25 }, (_, i) => `TICK_${i}`)
+    const cols = [
+      { name: "Date", data_type: "VARCHAR" },
+      { name: "Close", data_type: "DOUBLE" },
+    ]
+    const extras = {
+      metadata: ["ticker", "company"],
+      exchange_info: ["code", "country"],
+    }
+    const connector = entityConnector(tickerNames, cols, extras)
+
+    const result = await cache.indexWarehouse("wh", "pg", connector)
+
+    expect(result.entity_groups).toHaveLength(1)
+    expect(result.entity_groups![0].table_count).toBe(25)
+
+    // metadata + exchange_info still searchable by name as plain tables.
+    const metaSearch = cache.search("metadata")
+    expect(metaSearch.tables).toHaveLength(1)
+    expect(metaSearch.tables[0].name).toBe("metadata")
+
+    const exchSearch = cache.search("exchange_info")
+    expect(exchSearch.tables).toHaveLength(1)
+
+    cache.close()
+  })
+
+  test("under-threshold mixed tables produce normal per-table rows (backwards compat)", async () => {
+    const cache = SchemaCache.createInMemory()
+    // 5 mixed tables — below min_tables, no entity group.
+    const connector = mockConnector({
+      public: {
+        users: ["id", "email"],
+        orders: ["order_id", "user_id"],
+        products: ["sku", "name"],
+        events: ["ts", "kind"],
+        logs: ["level", "msg"],
+      },
+    })
+
+    const result = await cache.indexWarehouse("wh", "pg", connector)
+    expect(result.tables_indexed).toBe(5)
+    expect(result.entity_groups).toBeUndefined()
+
+    // All tables should still be findable as individual entries.
+    expect(cache.search("users").tables).toHaveLength(1)
+    expect(cache.search("orders").tables).toHaveLength(1)
+    expect(cache.search("products").tables).toHaveLength(1)
+
+    cache.close()
+  })
+
+  test("re-index clears entity group rows", async () => {
+    const cache = SchemaCache.createInMemory()
+    const v1Names = Array.from({ length: 25 }, (_, i) => `OLD_${i}`)
+    const cols = [{ name: "x", data_type: "INT" }]
+    await cache.indexWarehouse("wh", "pg", entityConnector(v1Names, cols))
+    expect(cache.search("OLD_5").entity_groups).toBeDefined()
+
+    // Re-index with non-entity data
+    const v2 = mockConnector({ public: { fresh: ["id"] } })
+    await cache.indexWarehouse("wh", "pg", v2)
+
+    // Old entity group gone
+    const stale = cache.search("OLD_5")
+    expect(stale.match_count).toBe(0)
+    // Fresh data present
+    expect(cache.search("fresh").tables).toHaveLength(1)
+
+    cache.close()
+  })
+
+  test("custom thresholds are honoured by indexWarehouse", async () => {
+    const cache = SchemaCache.createInMemory()
+    // Only 10 same-shape tables — below default min_tables=20, so by default
+    // would NOT be detected. Pass a lower threshold and verify it triggers.
+    const names = Array.from({ length: 10 }, (_, i) => `T${i}`)
+    const cols = [{ name: "x", data_type: "INT" }]
+    const connector = entityConnector(names, cols)
+
+    const defaultRun = await cache.indexWarehouse("wh", "pg", connector)
+    expect(defaultRun.entity_groups).toBeUndefined()
+
+    const tunedRun = await cache.indexWarehouse("wh", "pg", connector, {
+      entityMinTables: 5,
+    })
+    expect(tunedRun.entity_groups).toBeDefined()
+    expect(tunedRun.entity_groups).toHaveLength(1)
+    expect(tunedRun.entity_groups![0].table_count).toBe(10)
+
+    cache.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 15. SQLite driver — readonly connection handling
+// ---------------------------------------------------------------------------
+
 describe("SQLite driver readonly connections", () => {
   test("readonly connection can read existing database", async () => {
     const { connect } = await import("@altimateai/drivers/sqlite")

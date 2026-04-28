@@ -36,6 +36,7 @@ export const SchemaIndexTool = Tool.define("schema_index", {
           schemas: result.schemas_indexed,
           tables: result.tables_indexed,
           columns: result.columns_indexed,
+          entity_groups: result.entity_groups?.length ?? 0,
         },
         output,
       }
@@ -57,8 +58,30 @@ function formatIndexResult(result: SchemaIndexResult): string {
     `Tables indexed: ${result.tables_indexed}`,
     `Columns indexed: ${result.columns_indexed}`,
     `Timestamp: ${result.timestamp}`,
-    "",
-    "Schema cache is now ready. Use schema_search to find tables and columns by name or description.",
   ]
+
+  if (result.entity_groups && result.entity_groups.length > 0) {
+    lines.push("")
+    lines.push(`Entity-per-table groups detected: ${result.entity_groups.length}`)
+    for (const g of result.entity_groups) {
+      const fqSchema = g.database ? `${g.database}.${g.schema_name}` : g.schema_name
+      lines.push("")
+      lines.push(`schema: ${fqSchema}`)
+      lines.push(`pattern: ${g.pattern}`)
+      lines.push(`table_count: ${g.table_count}`)
+      const cols = g.composite_columns
+        .map((c) => `{name: "${c.name}", type: "${c.data_type}"}`)
+        .join(", ")
+      lines.push(`composite_columns: [${cols}]`)
+      lines.push(`sample_table: ${g.sample_table}`)
+      // table_names can be very long; emit comma-separated. Agent can grep.
+      lines.push(`table_names: [${g.table_names.join(", ")}]`)
+    }
+  }
+
+  lines.push("")
+  lines.push(
+    "Schema cache is now ready. Use schema_search to find tables and columns by name or description.",
+  )
   return lines.join("\n")
 }
