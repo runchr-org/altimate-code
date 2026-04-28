@@ -198,6 +198,33 @@ describe("bridge merge: branding leaks", () => {
     expect(violations).toEqual([])
   })
 
+  test("no `OpenCode` brand string in user-facing text (titles, descriptions, prompts)", async () => {
+    // Cycle 6 finding: bridge merges keep silently re-introducing literal "OpenCode"
+    // in user-visible strings — OAuth callback titles, server route descriptions,
+    // permission prompts, system prompts, uninstall flow, ACP README.
+    // Allow only these legitimate non-brand uses:
+    //   - error classes / type names (OpenCodeError)
+    //   - the altimate/plugin/anthropic.ts string substitution (function literally
+    //     replaces "OpenCode" → "Claude Code" in agent output — that's the point)
+    //   - imports / module references (`@opencode-ai/...`)
+    //   - line/block comments (jsdoc, `// OpenCode legacy ...`)
+    const files = await walkSource(srcDir, [".ts", ".tsx", ".txt", ".md"])
+    const violations: string[] = []
+    for (const file of files) {
+      const content = await readText(file)
+      const lines = content.split("\n")
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        if (!/\bOpenCode\b/.test(line)) continue
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue // comments
+        if (/OpenCodeError/.test(line)) continue // error class type
+        if (/replace\s*\(\s*\/\\bOpenCode\\b\//.test(line)) continue // anthropic plugin substitution
+        violations.push(`${path.relative(repoRoot, file)}:${i + 1}: ${line.trim()}`)
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
   test("root package.json points to AltimateAI repository", async () => {
     const pkg = JSON.parse(await readText(path.join(repoRoot, "package.json")))
     expect(pkg.repository?.url).toContain("AltimateAI/altimate-code")
