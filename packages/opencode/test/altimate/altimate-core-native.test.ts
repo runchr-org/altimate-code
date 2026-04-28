@@ -208,9 +208,12 @@ describe("Registration", () => {
     "altimate_core.introspection_sql",
     "altimate_core.parse_dbt",
     "altimate_core.is_safe",
+    // altimate_change start — cross-DB join key inference
+    "altimate_core.detect_join_candidates",
+    // altimate_change end
   ] as const
 
-  test("all 34 altimate_core methods are registered", () => {
+  test("all 35 altimate_core methods are registered", () => {
     const registered = Dispatcher.listNativeMethods()
     for (const method of ALL_METHODS) {
       expect(registered).toContain(method)
@@ -219,7 +222,7 @@ describe("Registration", () => {
     const coreCount = registered.filter((m) =>
       m.startsWith("altimate_core."),
     ).length
-    expect(coreCount).toBe(34)
+    expect(coreCount).toBe(35)
   })
 
   test("hasNativeHandler returns true for all methods", () => {
