@@ -335,6 +335,9 @@ describe("compaction count in telemetry", () => {
       cost: 0.05,
       compactions: compactionCount,
       outcome: "completed" as const,
+      final_tool: "",
+      error_class: "",
+      reason: "",
     }
 
     expect(event.compactions).toBe(2)

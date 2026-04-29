@@ -290,6 +290,11 @@ export namespace Telemetry {
         cost: number
         compactions: number
         outcome: "completed" | "abandoned" | "aborted" | "error"
+        // altimate_change start — agent_outcome diagnostic fields
+        final_tool: string
+        error_class: string
+        reason: string
+        // altimate_change end
       }
     | {
         type: "error_recovered"
@@ -779,6 +784,46 @@ export namespace Telemetry {
         return "accepted"
     }
   }
+
+  // altimate_change start — agent_outcome diagnostic field derivation
+  /** Derive diagnostic fields for the agent_outcome telemetry event.
+   *  Pure helper so the logic is unit-testable without standing up a full session.
+   *
+   *  Why: today the agent_outcome event ships with empty reason/final_tool/error_class
+   *  for every non-completed outcome, leaving ~30% of builder failures undiagnosable
+   *  in telemetry. This concentrates the rules in one place and gives us a guarantee
+   *  that the three fields are always populated (with explicit empty strings when
+   *  the outcome carries no diagnostic info — e.g. completed sessions).
+   */
+  export function deriveAgentOutcomeReason(input: {
+    outcome: "completed" | "abandoned" | "aborted" | "error"
+    lastToolName: string | null
+    lastMessageError: string | null
+    abortReason: string | null
+    lastErrorClass: string
+  }): { final_tool: string; error_class: string; reason: string } {
+    const final_tool = input.lastToolName ?? ""
+    switch (input.outcome) {
+      case "completed":
+        return { final_tool, error_class: "", reason: "" }
+      case "abandoned":
+        return { final_tool, error_class: "", reason: "no_tools_invoked" }
+      case "aborted": {
+        const reason = maskString(input.abortReason ?? "user_cancelled").slice(0, 200)
+        return { final_tool, error_class: input.lastErrorClass, reason }
+      }
+      case "error": {
+        const msg = input.lastMessageError ?? ""
+        const masked = maskString(msg).slice(0, 500)
+        return {
+          final_tool,
+          error_class: msg ? classifyError(msg) : "unknown",
+          reason: masked,
+        }
+      }
+    }
+  }
+  // altimate_change end
 
   // altimate_change start — expanded error classification patterns for better triage
   // Order matters: earlier patterns take priority. Use specific phrases, not

@@ -332,6 +332,10 @@ export namespace SessionPrompt {
     let emergencySessionEndFired = false
     // altimate_change start — quality signal, tool chain, error fingerprint tracking
     let lastToolCategory = ""
+    // altimate_change start — agent_outcome diagnostic tracking
+    let lastToolName = ""
+    let lastMessageError = ""
+    // altimate_change end
     const toolChain: string[] = []
     let toolErrorCount = 0
     let errorRecoveryCount = 0
@@ -929,6 +933,19 @@ export namespace SessionPrompt {
       const stepParts = await MessageV2.parts(processor.message.id)
       toolCallCount += stepParts.filter((p) => p.type === "tool").length
       if (processor.message.error) sessionHadError = true
+      // altimate_change start — capture last message error for agent_outcome reason
+      if (processor.message.error) {
+        const err = processor.message.error as any
+        try {
+          const name = typeof err?.name === "string" ? err.name : "unknown"
+          const rawMessage = typeof err?.data?.message === "string" ? err.data.message : ""
+          const masked = rawMessage ? Telemetry.maskString(rawMessage).slice(0, 300) : ""
+          lastMessageError = masked ? `${name}: ${masked}` : String(name)
+        } catch {
+          lastMessageError = "unknown"
+        }
+      }
+      // altimate_change end
       // altimate_change start — quality signal + tool chain + error fingerprints
       const toolParts = stepParts.filter((p) => p.type === "tool")
       for (const part of toolParts) {
@@ -936,6 +953,9 @@ export namespace SessionPrompt {
         const toolType = part.tool.startsWith("mcp__") ? "mcp" as const : "standard" as const
         const toolCategory = Telemetry.categorizeToolName(part.tool, toolType)
         lastToolCategory = toolCategory
+        // altimate_change start — track last tool name for agent_outcome diagnostics
+        lastToolName = part.tool
+        // altimate_change end
         if (toolChain.length < 50) toolChain.push(part.tool)
         const isError = part.state?.status === "error"
         if (isError) {
@@ -1046,6 +1066,27 @@ export namespace SessionPrompt {
       })
     }
     // altimate_change end — emit quality signal, tool chain, and error fingerprint events
+    // altimate_change start — populate agent_outcome diagnostic fields
+    const abortReason: string | null = abort.aborted
+      ? (typeof abort.reason === "string"
+          ? abort.reason
+          : abort.reason instanceof Error
+            ? abort.reason.message
+            : abort.reason
+              ? "non_string_reason"
+              : null)
+      : null
+    const lastErrorClass = errorRecords.length > 0
+      ? errorRecords[errorRecords.length - 1].errorClass
+      : ""
+    const diag = Telemetry.deriveAgentOutcomeReason({
+      outcome,
+      lastToolName: lastToolName || null,
+      lastMessageError: lastMessageError || null,
+      abortReason,
+      lastErrorClass,
+    })
+    // altimate_change end
     Telemetry.track({
       type: "agent_outcome",
       timestamp: Date.now(),
@@ -1057,6 +1098,11 @@ export namespace SessionPrompt {
       cost: sessionTotalCost,
       compactions: compactionCount,
       outcome,
+      // altimate_change start — agent_outcome diagnostic fields
+      final_tool: diag.final_tool,
+      error_class: diag.error_class,
+      reason: diag.reason,
+      // altimate_change end
     })
     if (!emergencySessionEndFired) {
       emergencySessionEndFired = true

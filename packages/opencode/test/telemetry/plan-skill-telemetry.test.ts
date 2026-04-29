@@ -184,6 +184,9 @@ describe("telemetry.agent-outcome", () => {
         cost: 0.05,
         compactions: 0,
         outcome,
+        final_tool: "",
+        error_class: "",
+        reason: "",
       }
       expect(event.outcome).toBe(outcome)
       expect(event.agent).toBe("plan")
