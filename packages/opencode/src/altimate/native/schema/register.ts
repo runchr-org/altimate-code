@@ -34,7 +34,15 @@ register("schema.index", async (params: SchemaIndexParams): Promise<SchemaIndexR
 
   const cache = await getCache()
   try {
-    const result = await cache.indexWarehouse(params.warehouse, warehouseType, connector)
+    const result = await cache.indexWarehouse(
+      params.warehouse,
+      warehouseType,
+      connector,
+      {
+        entityRatioThreshold: params.entityRatioThreshold,
+        entityMinTables: params.entityMinTables,
+      },
+    )
     try {
       Telemetry.track({
         type: "warehouse_introspection",

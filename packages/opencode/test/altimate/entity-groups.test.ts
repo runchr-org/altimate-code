@@ -79,6 +79,46 @@ describe("fingerprintColumns", () => {
   test("empty columns produce empty fingerprint", () => {
     expect(fingerprintColumns([])).toBe("")
   })
+
+  test("column names containing ':' do not collide with the type separator", () => {
+    // Pre-fix `${name}:${type}|...` joining made `(a:b, INT)` collide with
+    // `(a, b:INT)` etc. The new JSON-stringify-per-tuple encoding must keep
+    // these distinct.
+    const fp1 = fingerprintColumns([{ name: "a:b", data_type: "INT" }])
+    const fp2 = fingerprintColumns([{ name: "a", data_type: "b:INT" }])
+    expect(fp1).not.toBe(fp2)
+  })
+
+  test("column names containing '|' do not collide with the column separator", () => {
+    // Pre-fix `${name}:${type}|${name}:${type}` made `("a|b", X)` collide
+    // with `(a, X), (b, X)` after sorting.
+    const fp1 = fingerprintColumns([{ name: "a|b", data_type: "X" }])
+    const fp2 = fingerprintColumns([
+      { name: "a", data_type: "X" },
+      { name: "b", data_type: "X" },
+    ])
+    expect(fp1).not.toBe(fp2)
+  })
+
+  test("null/undefined data_type collapses to a sentinel distinct from empty string", () => {
+    // Two semantically-different missing-type columns should still fingerprint
+    // identically to each other.
+    const fpNull = fingerprintColumns([
+      { name: "x", data_type: null as unknown as string },
+    ])
+    const fpUndef = fingerprintColumns([
+      { name: "x", data_type: undefined as unknown as string },
+    ])
+    expect(fpNull).toBe(fpUndef)
+
+    // But should be distinct from a column with an actual empty-string type
+    // and from a column with a real type.
+    const fpEmpty = fingerprintColumns([{ name: "x", data_type: "" }])
+    const fpReal = fingerprintColumns([{ name: "x", data_type: "TEXT" }])
+    expect(fpNull).not.toBe(fpEmpty)
+    expect(fpNull).not.toBe(fpReal)
+    expect(fpEmpty).not.toBe(fpReal)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -241,6 +281,50 @@ describe("detectEntityGroup — threshold parameters", () => {
     const result = detectEntityGroup(tables, { minTables: 5 })
     expect(result.entity_group).not.toBeNull()
     expect(result.entity_group!.table_names).toHaveLength(7)
+  })
+
+  test("rejects ratioThreshold <= 0", () => {
+    const tables = stockTables(Array.from({ length: 25 }, (_, i) => `T${i}`))
+    expect(() => detectEntityGroup(tables, { ratioThreshold: 0 })).toThrow(
+      /ratioThreshold/,
+    )
+    expect(() => detectEntityGroup(tables, { ratioThreshold: -0.1 })).toThrow(
+      /ratioThreshold/,
+    )
+  })
+
+  test("rejects ratioThreshold > 1", () => {
+    const tables = stockTables(Array.from({ length: 25 }, (_, i) => `T${i}`))
+    expect(() => detectEntityGroup(tables, { ratioThreshold: 1.5 })).toThrow(
+      /ratioThreshold/,
+    )
+  })
+
+  test("rejects NaN ratioThreshold", () => {
+    const tables = stockTables(Array.from({ length: 25 }, (_, i) => `T${i}`))
+    expect(() => detectEntityGroup(tables, { ratioThreshold: Number.NaN })).toThrow(
+      /ratioThreshold/,
+    )
+  })
+
+  test("rejects minTables < 2", () => {
+    const tables = stockTables(Array.from({ length: 25 }, (_, i) => `T${i}`))
+    expect(() => detectEntityGroup(tables, { minTables: 0 })).toThrow(/minTables/)
+    expect(() => detectEntityGroup(tables, { minTables: 1 })).toThrow(/minTables/)
+    expect(() => detectEntityGroup(tables, { minTables: -5 })).toThrow(/minTables/)
+  })
+
+  test("rejects non-integer minTables", () => {
+    const tables = stockTables(Array.from({ length: 25 }, (_, i) => `T${i}`))
+    expect(() => detectEntityGroup(tables, { minTables: 3.7 })).toThrow(
+      /minTables/,
+    )
+  })
+
+  test("ratioThreshold = 1 is permitted (exact-match cap)", () => {
+    const tables = stockTables(Array.from({ length: 25 }, (_, i) => `T${i}`))
+    const result = detectEntityGroup(tables, { ratioThreshold: 1 })
+    expect(result.entity_group).not.toBeNull()
   })
 
   test("custom ratio_threshold=0.8 rejects weakly-dominant groups", () => {

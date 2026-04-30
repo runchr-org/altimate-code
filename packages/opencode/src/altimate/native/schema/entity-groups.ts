@@ -39,7 +39,22 @@ export interface EntityGroup {
   sample_table: string
 }
 
-/** Result of running detection over one schema's tables. */
+/**
+ * Result of running detection over one schema's tables.
+ *
+ * NOTE: At most ONE entity group is returned per schema — the one with the
+ * largest member bucket among fingerprints that meet both the ratio and
+ * minTables thresholds. Schemas that contain two or more distinct entity
+ * patterns (e.g. 100 per-ticker tables AND 80 per-region tables) will only
+ * have the dominant pattern collapsed; the other pattern's tables fall into
+ * `remaining_tables` and are emitted per-table by the cache.
+ *
+ * This is a deliberate scope choice: the cache UNIQUE on
+ * `(warehouse, database, schema, fingerprint)` allows multiple groups per
+ * schema, but multi-group detection is left for a follow-up to keep the
+ * rollout backwards-compatible. Callers needing all groups for a schema
+ * should call `detectEntityGroup` repeatedly on `remaining_tables`.
+ */
 export interface EntityGroupDetection {
   /** Detected entity group, or null if no group passed the threshold. */
   entity_group: EntityGroup | null
@@ -68,18 +83,38 @@ export const DEFAULT_ENTITY_MIN_TABLES = 20
 // ---------------------------------------------------------------------------
 
 /**
+ * Sentinel marker for columns whose data_type is null/undefined. Distinct from
+ * the empty string so a real type of "" (drivers may legitimately return that)
+ * does not collide with a missing type.
+ */
+const NULL_TYPE_SENTINEL = "\u0000__null_type__\u0000"
+
+/**
  * Build a stable fingerprint of a table's column shape.
  *
  * Sorted by column name so identical structures collide regardless of the
  * order the source database returns columns in. Type is lowercased so
  * `VARCHAR` and `varchar` match.
+ *
+ * Encoding uses `JSON.stringify` per (name, type) tuple joined by a unit
+ * separator (\x1F). That keeps the fingerprint delimiter-safe even when
+ * column names contain `:` or `|` (legal in quoted Postgres/Snowflake/
+ * BigQuery identifiers). Null/undefined `data_type` values are mapped to a
+ * dedicated sentinel so two tables that differ only in "missing type vs real
+ * type" do not collide.
  */
 export function fingerprintColumns(columns: FingerprintColumn[]): string {
   if (columns.length === 0) return ""
   const sorted = [...columns]
-    .map((c) => ({ name: c.name, data_type: (c.data_type || "").toLowerCase() }))
+    .map((c) => ({
+      name: c.name,
+      data_type:
+        c.data_type == null
+          ? NULL_TYPE_SENTINEL
+          : c.data_type.toLowerCase(),
+    }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-  return sorted.map((c) => `${c.name}:${c.data_type}`).join("|")
+  return sorted.map((c) => JSON.stringify([c.name, c.data_type])).join("\x1F")
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +136,24 @@ export function detectEntityGroup(
 ): EntityGroupDetection {
   const ratioThreshold = options.ratioThreshold ?? DEFAULT_ENTITY_RATIO_THRESHOLD
   const minTables = options.minTables ?? DEFAULT_ENTITY_MIN_TABLES
+
+  // Reject obviously-bad threshold inputs so silent miscalibrations from
+  // upstream callers (NaN, negative, fractional minTables) fail loudly.
+  if (
+    typeof ratioThreshold !== "number" ||
+    !Number.isFinite(ratioThreshold) ||
+    ratioThreshold <= 0 ||
+    ratioThreshold > 1
+  ) {
+    throw new Error(
+      `entity-groups: ratioThreshold must be a number in (0, 1]; got ${ratioThreshold}`,
+    )
+  }
+  if (!Number.isInteger(minTables) || minTables < 2) {
+    throw new Error(
+      `entity-groups: minTables must be an integer >= 2; got ${minTables}`,
+    )
+  }
 
   if (tables.length === 0) {
     return { entity_group: null, remaining_tables: [] }

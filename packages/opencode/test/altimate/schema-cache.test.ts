@@ -891,6 +891,133 @@ describe("entity-per-table digest", () => {
 
     cache.close()
   })
+
+  // -------------------------------------------------------------------------
+  // C1 regression: listColumns must include synthetic rows reconstructed
+  // from collapsed entity groups so PII detection / SQL pre-validation
+  // don't go blind on entity-per-table warehouses.
+  // -------------------------------------------------------------------------
+
+  test("listColumns reconstructs columns for fully-collapsed entity-group warehouses", async () => {
+    const cache = SchemaCache.createInMemory()
+    const tickerNames = Array.from({ length: 25 }, (_, i) => `TICKER_${i}`)
+    const cols = [
+      { name: "ssn", data_type: "VARCHAR" },
+      { name: "email", data_type: "VARCHAR" },
+      { name: "amount", data_type: "DOUBLE" },
+    ]
+    const connector = entityConnector(tickerNames, cols)
+    await cache.indexWarehouse("wh", "duckdb", connector)
+
+    const listed = cache.listColumns("wh")
+    // 25 tables × 3 columns = 75 reconstructed rows.
+    expect(listed).toHaveLength(25 * 3)
+
+    // Every reconstructed row should carry the collapsed table name and
+    // a fully-formed FQN so downstream consumers can group/iterate by
+    // table.
+    const tablesSeen = new Set(listed.map((r) => r.table))
+    expect(tablesSeen.size).toBe(25)
+    expect(tablesSeen.has("TICKER_0")).toBe(true)
+    expect(tablesSeen.has("TICKER_24")).toBe(true)
+
+    const sample = listed.find(
+      (r) => r.table === "TICKER_3" && r.name === "email",
+    )
+    expect(sample).toBeDefined()
+    expect(sample!.data_type).toBe("VARCHAR")
+    expect(sample!.fqn).toBe("public.TICKER_3.email")
+
+    cache.close()
+  })
+
+  test("listColumns merges per-table and collapsed-group columns", async () => {
+    const cache = SchemaCache.createInMemory()
+    const tickerNames = Array.from({ length: 22 }, (_, i) => `T_${i}`)
+    const sharedCols = [{ name: "v", data_type: "INT" }]
+    const extras = {
+      metadata: ["catalog_id", "label"],
+    }
+    const connector = entityConnector(tickerNames, sharedCols, extras)
+    await cache.indexWarehouse("wh", "pg", connector)
+
+    const listed = cache.listColumns("wh")
+    // 22 collapsed tables × 1 column + 1 plain table × 2 columns = 24.
+    expect(listed).toHaveLength(22 + 2)
+
+    // Plain-table columns come from columns_cache.
+    expect(listed.some((c) => c.table === "metadata" && c.name === "catalog_id")).toBe(
+      true,
+    )
+    // Collapsed columns come from entity_groups_cache.
+    expect(listed.some((c) => c.table === "T_5" && c.name === "v")).toBe(true)
+
+    cache.close()
+  })
+
+  test("listColumns honours limit across combined per-table + collapsed rows", async () => {
+    const cache = SchemaCache.createInMemory()
+    const tickerNames = Array.from({ length: 25 }, (_, i) => `T_${i}`)
+    const sharedCols = [
+      { name: "a", data_type: "INT" },
+      { name: "b", data_type: "INT" },
+    ]
+    const connector = entityConnector(tickerNames, sharedCols)
+    await cache.indexWarehouse("wh", "pg", connector)
+
+    // Total reconstructable rows = 25 × 2 = 50; clip to 7.
+    const listed = cache.listColumns("wh", 7)
+    expect(listed).toHaveLength(7)
+
+    cache.close()
+  })
+
+  test("listColumns is empty for an unknown warehouse even with entity groups", async () => {
+    const cache = SchemaCache.createInMemory()
+    const names = Array.from({ length: 25 }, (_, i) => `T${i}`)
+    await cache.indexWarehouse(
+      "real-wh",
+      "pg",
+      entityConnector(names, [{ name: "v", data_type: "INT" }]),
+    )
+
+    expect(cache.listColumns("ghost")).toHaveLength(0)
+
+    cache.close()
+  })
+
+  test("listColumns reconstruction enables PII detection on collapsed warehouses (C1 regression)", async () => {
+    // Integration test for the original regression: tables collapsed into
+    // an entity group must still be visible to downstream column scanners.
+    // We verify by walking the reconstructed columns and confirming PII
+    // candidate names like ssn / email show up under each member table —
+    // exactly the input shape `pii-detector.ts` consumes.
+    const cache = SchemaCache.createInMemory()
+    const tableNames = Array.from({ length: 30 }, (_, i) => `tenant_${i}`)
+    const cols = [
+      { name: "tenant_id", data_type: "VARCHAR" },
+      { name: "user_email", data_type: "VARCHAR" },
+      { name: "ssn", data_type: "VARCHAR" },
+      { name: "amount", data_type: "DOUBLE" },
+    ]
+    await cache.indexWarehouse("wh", "pg", entityConnector(tableNames, cols))
+
+    const listed = cache.listColumns("wh")
+
+    // Every collapsed member table appears in the column list.
+    const piiCandidates = listed.filter(
+      (c) => c.name === "user_email" || c.name === "ssn",
+    )
+    expect(piiCandidates).toHaveLength(30 * 2)
+
+    // And one PII candidate per (tenant, ssn) and (tenant, user_email).
+    const ssnTables = new Set(
+      listed.filter((c) => c.name === "ssn").map((c) => c.table),
+    )
+    expect(ssnTables.size).toBe(30)
+
+    cache.close()
+  })
 })
 
 // ---------------------------------------------------------------------------

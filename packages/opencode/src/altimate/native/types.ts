@@ -371,6 +371,18 @@ export interface WarehouseDiscoverResult {
 
 export interface SchemaIndexParams {
   warehouse: string
+  /**
+   * Override for entity-per-table detection ratio threshold (default 0.5 =
+   * 50%). A fingerprint group qualifies if it covers at least this fraction
+   * of tables in a schema. Must be in (0, 1].
+   */
+  entityRatioThreshold?: number
+  /**
+   * Override for entity-per-table detection minimum table count (default 20).
+   * Groups smaller than this are not collapsed even if they dominate. Must
+   * be an integer >= 2.
+   */
+  entityMinTables?: number
 }
 
 export interface SchemaIndexResult {

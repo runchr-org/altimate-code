@@ -311,13 +311,21 @@ export class SchemaCache {
       if (detection.entity_group) {
         const eg = detection.entity_group
         const compositeColumns = eg.composite_columns
+        // Build a bounded search blob that keeps the row size predictable
+        // even for warehouses with thousands of tables in a single group.
+        // Member table names are deliberately excluded here — they live in
+        // table_names_json and are matched after FTS using the post-filter
+        // below in search() (search_text → matching_tables). Keeping
+        // them out of search_text avoids unbounded blob growth and the
+        // false-positive matches that come from common substrings (e.g.
+        // "2024", "prod") buried in 5,000 concatenated table names.
+        // Column types are also excluded so a query like `varchar` doesn't
+        // match every group containing any varchar column.
         const groupSearchText = makeSearchText(
           databaseName,
           schemaName,
           eg.sample_table,
-          ...eg.table_names,
           ...compositeColumns.map((c) => c.name),
-          ...compositeColumns.map((c) => c.data_type),
         )
         insertEntityGroup.run(
           warehouseName,
@@ -430,18 +438,32 @@ export class SchemaCache {
       }
     })
 
-    // Search entity groups: a group matches if any of its tokens appears in
-    // its search_text (which includes the full table_names list, composite
-    // column names/types, schema, and sample table). This means the agent
-    // can still find a specific collapsed table by name.
+    // Search entity groups. A group matches if any query token appears in
+    //   - search_text (schema, sample_table, composite column names — kept
+    //     small so this LIKE scan stays cheap), OR
+    //   - table_names_json (so an agent searching for a specific collapsed
+    //     table by name still finds the group; this LIKE is more expensive
+    //     per row but the entity_groups_cache row count is small).
+    // table_names are deliberately excluded from search_text itself so the
+    // blob can't grow unbounded and so that common substrings (e.g. "2024",
+    // "prod") buried inside a 5,000-table list don't produce false-positive
+    // structural matches.
+    const groupSearchClauses = tokens
+      .map(() => "(search_text LIKE ? OR table_names_json LIKE ?)")
+      .join(" OR ")
+    const groupSearchParams: string[] = []
+    for (const t of tokens) {
+      const pat = `%${t}%`
+      groupSearchParams.push(pat, pat)
+    }
     const groupRows = this.db.prepare(
       `SELECT warehouse, database_name, schema_name, pattern, table_count,
               sample_table, composite_columns_json, table_names_json
        FROM entity_groups_cache
-       WHERE ${searchCondition} ${whFilter}
+       WHERE (${groupSearchClauses}) ${whFilter}
        ORDER BY schema_name, sample_table
        LIMIT ?`,
-    ).all(...searchParams, ...whParams, limit) as any[]
+    ).all(...groupSearchParams, ...whParams, limit) as any[]
 
     const entityGroups: SchemaSearchEntityGroupResult[] = groupRows.map((row) => {
       const compositeColumns = JSON.parse(row.composite_columns_json) as {
@@ -543,7 +565,18 @@ export class SchemaCache {
 
   /**
    * List all columns for a given warehouse (no search filter).
-   * Used by PII detection to scan all cached columns.
+   *
+   * Returns BOTH per-table cached columns AND synthetic rows reconstructed
+   * from collapsed entity-per-table groups (one row per (member_table,
+   * composite_column) tuple). This is critical for downstream consumers
+   * like `schema_detect_pii` and `sql_execute` pre-validation: without the
+   * synthetic expansion, a fully-collapsed warehouse would return an empty
+   * column list and PII detection would silently produce false-clean
+   * reports.
+   *
+   * The `limit` is applied to the COMBINED result. Per-table rows are
+   * returned first (preserving prior ordering); reconstructed group rows
+   * are appended only if there is remaining capacity.
    */
   listColumns(
     warehouse: string,
@@ -557,7 +590,7 @@ export class SchemaCache {
        LIMIT ?`,
     ).all(warehouse, limit) as any[]
 
-    return rows.map((row) => {
+    const result: SchemaSearchColumnResult[] = rows.map((row) => {
       const fqnParts = [row.database_name, row.schema_name, row.table_name, row.column_name].filter(Boolean)
       return {
         warehouse: row.warehouse,
@@ -570,6 +603,57 @@ export class SchemaCache {
         fqn: fqnParts.join("."),
       }
     })
+
+    if (result.length >= limit) return result
+
+    // Reconstruct per-table column rows from any entity groups belonging to
+    // this warehouse so downstream column scanners (PII, SQL pre-validation)
+    // see a complete view of the warehouse, not just the per-table cache.
+    const groupRows = this.db.prepare(
+      `SELECT warehouse, database_name, schema_name, composite_columns_json, table_names_json
+       FROM entity_groups_cache
+       WHERE warehouse = ?
+       ORDER BY schema_name, sample_table`,
+    ).all(warehouse) as any[]
+
+    for (const gr of groupRows) {
+      let cols: { name: string; data_type: string }[] = []
+      let tableNames: string[] = []
+      try {
+        cols = JSON.parse(gr.composite_columns_json)
+        tableNames = JSON.parse(gr.table_names_json)
+      } catch {
+        // Skip malformed rows rather than blowing up the whole listing.
+        continue
+      }
+      for (const tableName of tableNames) {
+        for (const col of cols) {
+          if (result.length >= limit) return result
+          const fqnParts = [
+            gr.database_name,
+            gr.schema_name,
+            tableName,
+            col.name,
+          ].filter(Boolean)
+          result.push({
+            warehouse: gr.warehouse,
+            database: gr.database_name ?? undefined,
+            schema_name: gr.schema_name,
+            table: tableName,
+            name: col.name,
+            data_type: col.data_type ?? undefined,
+            // Composite columns don't carry per-column nullability today;
+            // the detector only fingerprints (name, type). Default to true
+            // (nullable) to match `columns_cache`'s default and avoid making
+            // PII detection / SQL validation reject rows on a missing flag.
+            nullable: true,
+            fqn: fqnParts.join("."),
+          })
+        }
+      }
+    }
+
+    return result
   }
 
   close(): void {
