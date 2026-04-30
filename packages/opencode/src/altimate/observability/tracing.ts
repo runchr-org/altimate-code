@@ -328,6 +328,11 @@ export class Trace {
   private snapshotDir: string | undefined
   private snapshotPending = false
   private snapshotPromise: Promise<void> | undefined
+  // Set true when flushSync runs. Prevents in-flight async snapshot()
+  // calls from racing with the synchronous crash write — without this,
+  // a still-pending snapshot's `fs.rename` can overwrite flushSync's
+  // crashed-trace content. Round-3 audit + CI flake on slow runners.
+  private crashed = false
 
   private constructor(exporters: TraceExporter[]) {
     this.traceId = randomUUIDv7()
@@ -745,6 +750,7 @@ export class Trace {
   private snapshot() {
     if (!this.snapshotDir || !this.sessionId) return
     if (this.snapshotPending) return // Debounce — only one in flight at a time
+    if (this.crashed) return // flushSync wrote the canonical crashed file; do NOT race it
     this.snapshotPending = true
 
     const trace = this.buildTraceFile()
@@ -752,10 +758,18 @@ export class Trace {
     const filePath = path.join(this.snapshotDir, `${safeId}.json`)
     const tmpPath = filePath + `.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
 
-    // Atomic write: write to temp file, then rename (prevents partial reads)
+    // Atomic write: write to temp file, then rename (prevents partial reads).
+    // We re-check `this.crashed` immediately before rename so a flushSync that
+    // ran *during* the write doesn't get clobbered.
     this.snapshotPromise = fs.mkdir(this.snapshotDir, { recursive: true })
       .then(() => fs.writeFile(tmpPath, JSON.stringify(trace, null, 2)))
-      .then(() => fs.rename(tmpPath, filePath))
+      .then(() => {
+        if (this.crashed) {
+          // flushSync took over — drop the temp and bail
+          return fs.unlink(tmpPath).catch(() => {})
+        }
+        return fs.rename(tmpPath, filePath)
+      })
       .catch((err) => {
         Log.Default.debug(`[tracing] failed to write trace snapshot: ${err}`)
         fs.unlink(tmpPath).catch(() => {})
@@ -948,6 +962,9 @@ export class Trace {
   flushSync(error?: string) {
     try {
       if (!this.snapshotDir || !this.sessionId) return
+      // Set crashed BEFORE writing so any in-flight async snapshot() will
+      // bail out at its rename step instead of clobbering our crashed file.
+      this.crashed = true
       this.currentGenerationSpanId = undefined
       const rootSpan = this.spans.find((s) => s.spanId === this.rootSpanId)
       if (rootSpan) {
