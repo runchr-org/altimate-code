@@ -276,6 +276,48 @@ describe("v1.4.0 merge — permission system handles new flags + settings (PR #2
     const cfg = await readText(path.join(srcDir, "config", "config.ts"))
     expect(cfg).toMatch(/variant_list:\s*z\.string\(\)/)
   })
+
+  // Regression: bridge merge brought in upstream's Effect-TS Permission service
+  // (src/permission/index.ts) but every runtime ask in session/processor and
+  // session/prompt still calls PermissionNext. If the HTTP routes route replies
+  // to the Effect service, the pending map is empty and tool calls hang.
+  // Both routes must call PermissionNext until session is migrated.
+  test("HTTP /permission/:id/reply routes to PermissionNext (matches runtime ask side)", async () => {
+    const route = await readText(path.join(srcDir, "server", "routes", "permission.ts"))
+    expect(route).toMatch(/PermissionNext\.reply\(/)
+    expect(route).toMatch(/PermissionNext\.list\(/)
+    expect(route).toMatch(/PermissionNext\.Reply/)
+    expect(route).toMatch(/PermissionNext\.Request\.array\(\)/)
+    // Must NOT call the Effect-TS module — that one's pending map is empty
+    expect(route).not.toMatch(/^\s*await\s+Permission\.reply\(/m)
+    expect(route).not.toMatch(/^\s*await\s+Permission\.list\(/m)
+    expect(route).not.toMatch(/resolver\(Permission\.Request\.array\(\)\)/)
+  })
+
+  test("deprecated /session/.../permissions/:id reply route also routes to PermissionNext", async () => {
+    const route = await readText(path.join(srcDir, "server", "routes", "session.ts"))
+    expect(route).toMatch(/PermissionNext\.reply\(/)
+    expect(route).toMatch(/PermissionNext\.Reply/)
+    // The deprecated route must not call the Effect service either
+    expect(route).not.toMatch(/^\s*Permission\.reply\(/m)
+  })
+
+  test("every runtime ask site still uses PermissionNext.ask (no accidental migration to Effect Permission)", async () => {
+    const sites = [
+      path.join(srcDir, "session", "processor.ts"),
+      path.join(srcDir, "session", "prompt.ts"),
+    ]
+    for (const site of sites) {
+      const content = await readText(site)
+      // PermissionNext.ask must be present at every ask site
+      expect(content).toMatch(/PermissionNext\.ask\(/)
+      // Any switch to Permission.ask without also flipping the routes would
+      // re-create the split-brain bug — block the half-migration here.
+      const hasOldAsk = /^\s*await\s+Permission\.ask\(/m.test(content)
+      const hasNewAsk = /PermissionNext\.ask\(/.test(content)
+      expect(hasOldAsk && !hasNewAsk).toBe(false)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

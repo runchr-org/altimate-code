@@ -14,7 +14,11 @@ import { Todo } from "../../session/todo"
 import { Agent } from "../../agent/agent"
 import { Snapshot } from "@/snapshot"
 import { Log } from "../../util/log"
-import { Permission } from "@/permission"
+// altimate_change start — upstream_fix: bridge merge wired routes to Effect-TS Permission, but the runtime
+// asks come from PermissionNext. Use PermissionNext here so this deprecated reply route hits the same
+// pending map. See packages/opencode/src/server/routes/permission.ts for the full explanation.
+import { PermissionNext } from "@/permission/next"
+// altimate_change end
 import { PermissionID } from "@/permission/schema"
 import { ModelID, ProviderID } from "@/provider/schema"
 import { errors } from "../error"
@@ -1021,14 +1025,16 @@ export const SessionRoutes = lazy(() =>
           permissionID: PermissionID.zod,
         }),
       ),
-      validator("json", z.object({ response: Permission.Reply })),
+      // altimate_change start — upstream_fix: route to PermissionNext so this matches the runtime ask side
+      validator("json", z.object({ response: PermissionNext.Reply })),
       async (c) => {
         const params = c.req.valid("param")
-        Permission.reply({
+        PermissionNext.reply({
           requestID: params.permissionID,
           reply: c.req.valid("json").response,
         })
         return c.json(true)
       },
+      // altimate_change end
     ),
 )
