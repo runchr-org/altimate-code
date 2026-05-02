@@ -441,8 +441,18 @@ jobs:
               echo "Initial push (zero-SHA) — skipping marker check"
               exit 0
             fi
-            echo "Push to main — running marker check against pre-push state"
-            bun run script/upstream/analyze.ts --markers --base "${{ github.event.before }}" --strict
+            # Squash-merging an `upstream/merge-*` PR lands as a single commit
+            # on main, so the second-parent / branch-name signal is gone here.
+            # Detect bridge/merge-upstream commits in the pushed range by subject
+            # and downgrade to non-strict — the PR-side review already gated this.
+            if git log --format=%s "${{ github.event.before }}..${{ github.sha }}" \
+                 | grep -qiE '(bridge|merge) upstream'; then
+              echo "Bridge/upstream-merge commit detected in push range — running marker check in non-strict mode"
+              bun run script/upstream/analyze.ts --markers --base "${{ github.event.before }}"
+            else
+              echo "Push to main — running marker check against pre-push state"
+              bun run script/upstream/analyze.ts --markers --base "${{ github.event.before }}" --strict
+            fi
           elif [[ "${{ github.head_ref }}" == merge-upstream-* ]] || [[ "${{ github.head_ref }}" == upstream/merge-* ]]; then
             echo "Upstream merge PR detected — running marker check in non-strict mode"
             bun run script/upstream/analyze.ts --markers --base ${{ github.event.pull_request.base.ref }}
