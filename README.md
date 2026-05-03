@@ -122,6 +122,9 @@ Credit analysis, expensive query detection, warehouse right-sizing, unused resou
 ### Cross-Dialect Translation
 Transpile SQL between Snowflake, BigQuery, Databricks, Redshift, PostgreSQL, MySQL, SQL Server, and DuckDB.
 
+### Cross-Warehouse Data Parity
+Row-level and column-level diffing across 12 warehouses (including cross-dialect pairs like Postgres ↔ Snowflake or Databricks ↔ Fabric) via the `data_diff` tool and `/data-parity` skill. Five algorithms — `auto`, `joindiff`, `hashdiff`, `profile`, and `cascade` — partitioned execution for 100M+ row tables, and a `profile`-only mode for PII / PHI / PCI environments.
+
 ### PII Detection & Safety
 Automatic column scanning for PII across 15 categories with 30+ regex patterns. Safety checks and policy enforcement before query execution.
 
@@ -151,7 +154,7 @@ Each mode has scoped permissions, tool access, and SQL write-access control.
 
 ## Supported Warehouses
 
-Snowflake · BigQuery · Databricks · PostgreSQL · Redshift · ClickHouse · DuckDB · MySQL · SQL Server · Oracle · SQLite · MongoDB
+Snowflake · BigQuery · Databricks · PostgreSQL · Redshift · ClickHouse · DuckDB · MySQL · SQL Server · Microsoft Fabric · Oracle · SQLite · MongoDB
 
 First-class support with schema indexing, query execution, and metadata introspection. SSH tunneling available for secure connections.
 
@@ -159,7 +162,7 @@ First-class support with schema indexing, query execution, and metadata introspe
 
 Model-agnostic — bring your own provider or run locally.
 
-Anthropic · OpenAI · Google Gemini · Google Vertex AI · Amazon Bedrock · Azure OpenAI · Mistral · Groq · DeepInfra · Cerebras · Cohere · Together AI · Perplexity · xAI · OpenRouter · Ollama · GitHub Copilot
+Anthropic · OpenAI · Google Gemini · Google Vertex AI · Amazon Bedrock · Azure OpenAI · Databricks AI Gateway · Snowflake Cortex · Mistral · Groq · DeepInfra · Cerebras · Cohere · Together AI · Perplexity · xAI · OpenRouter · Ollama · LM Studio · GitHub Copilot
 
 ## Skills
 
@@ -178,12 +181,16 @@ Contributions welcome — docs, SQL rules, warehouse connectors, and TUI improve
 
 ## Changelog
 
-- **v0.5.11** (March 2026) — `altimate-code check` CLI command, data-viz improvements, Codespaces support, session tracing, 52 CI test fix
+- **v0.6.1** (April 2026) — BigQuery finops fixes (correct `INFORMATION_SCHEMA` columns, multi-region support), advisory `anti-slop` workflow
+- **v0.6.0** (April 2026) — cross-warehouse data parity (`data_diff` tool + `/data-parity` skill), Microsoft Fabric / MSSQL support, Databricks AI Gateway provider, Amazon Bedrock custom-endpoints guide
+- **v0.5.21** (April 2026) — automated dbt unit test generation (`/dbt-unit-tests`), manifest parse cache, dialect-aware `sql_explain`
+- **v0.5.20** (April 2026) — Altimate model auto-selection, password URI percent-encoding, `trace list` pagination
+- **v0.5.18** (April 2026) — native GitLab MR review, Altimate LLM Gateway provider, MCP env-var interpolation
+- **v0.5.16** (March 2026) — ClickHouse driver support, agent loop detection, error classification overhaul
+- **v0.5.14** (March 2026) — MongoDB driver support, skill follow-up suggestions
+- **v0.5.11** (March 2026) — `altimate-code check` CLI command, data-viz improvements, Codespaces support, session tracing
 - **v0.5.7** (March 2026) — impact analysis tool, training import, CI check command, `--max-turns` budget, LM Studio provider
 - **v0.5.6** (March 2026) — skill CLI & TUI management, GitHub skill install, Snowflake Cortex provider
-- **v0.5.5** (March 2026) — auto-discover MCP servers from VS Code, Cursor, Claude Code, Copilot configs
-- **v0.5.3** (March 2026) — bundle skills/dbt-tools in npm binary, marker guard CI
-- **v0.5.1** (March 2026) — simplified 3-mode agents (builder/analyst/plan), SQL write access control
 - **v0.5.0** (March 2026) — smooth streaming mode, builtin skills, `/configure-claude` and `/configure-codex` commands
 - **v0.4.x and earlier** — [See full changelog →](CHANGELOG.md)
 
