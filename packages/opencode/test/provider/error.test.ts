@@ -259,4 +259,125 @@ describe("ProviderError.parseAPICallError: error message extraction", () => {
       expect(result.message).toContain("invalid JSON in request body")
     }
   })
+
+  test("extracts nested error.message from OpenAI-shaped JSON body", () => {
+    // OpenAI returns 4xx errors with {error: {message, type, code}}. The extractor
+    // must reach body.error.message — not stop at body.error (which is the object).
+    const result = ProviderError.parseAPICallError({
+      providerID: "openai" as any,
+      error: makeAPICallError({
+        message: "Bad Request",
+        statusCode: 400,
+        responseBody: JSON.stringify({
+          error: {
+            message: "The model `gpt-5-codex` does not exist or you do not have access to it.",
+            type: "invalid_request_error",
+            code: "model_not_found",
+          },
+        }),
+      }),
+    })
+    expect(result.type).toBe("api_error")
+    if (result.type === "api_error") {
+      expect(result.message).toContain("Bad Request")
+      expect(result.message).toContain("gpt-5-codex")
+      expect(result.message).toContain("does not exist")
+      // The raw structured body must not be dumped when a clean message extracted.
+      // Detect a leak by looking for JSON delimiters from the parsed body.
+      expect(result.message).not.toContain('"error":')
+      expect(result.message).not.toContain("{")
+    }
+  })
+
+  test("extracts top-level message field when present", () => {
+    const result = ProviderError.parseAPICallError({
+      providerID: "anthropic" as any,
+      error: makeAPICallError({
+        message: "Bad Request",
+        statusCode: 400,
+        responseBody: JSON.stringify({ message: "Field 'foo' is required" }),
+      }),
+    })
+    expect(result.type).toBe("api_error")
+    if (result.type === "api_error") {
+      expect(result.message).toContain("Field 'foo' is required")
+    }
+  })
+
+  test("falls back to body.error string when it is a plain string", () => {
+    // Some providers return {error: "string"} rather than {error: {message: ...}}.
+    const result = ProviderError.parseAPICallError({
+      providerID: "anthropic" as any,
+      error: makeAPICallError({
+        message: "Bad Request",
+        statusCode: 400,
+        responseBody: JSON.stringify({ error: "Something went wrong" }),
+      }),
+    })
+    expect(result.type).toBe("api_error")
+    if (result.type === "api_error") {
+      expect(result.message).toContain("Something went wrong")
+    }
+  })
+
+  test("falls back through the chain when body.error has no message but body.message does", () => {
+    // body.error is an object without a `message` key — the extractor must skip it
+    // and reach the top-level body.message.
+    const result = ProviderError.parseAPICallError({
+      providerID: "openai" as any,
+      error: makeAPICallError({
+        message: "Bad Request",
+        statusCode: 400,
+        responseBody: JSON.stringify({
+          error: { code: "rate_limited", type: "throttle" },
+          message: "Slow down",
+        }),
+      }),
+    })
+    expect(result.type).toBe("api_error")
+    if (result.type === "api_error") {
+      expect(result.message).toContain("Slow down")
+    }
+  })
+
+  test("non-string body.error.message does not block a valid body.message", () => {
+    // Same class as the bug we just fixed: a truthy non-string at any level of the
+    // chain must not short-circuit a valid string further down.
+    const result = ProviderError.parseAPICallError({
+      providerID: "openai" as any,
+      error: makeAPICallError({
+        message: "Bad Request",
+        statusCode: 400,
+        responseBody: JSON.stringify({
+          error: { message: ["array", "of", "strings"] },
+          message: "Real human-readable error",
+        }),
+      }),
+    })
+    expect(result.type).toBe("api_error")
+    if (result.type === "api_error") {
+      expect(result.message).toContain("Real human-readable error")
+      expect(result.message).not.toContain("array")
+    }
+  })
+
+  test("dumps raw body when no string-typed message field exists anywhere", () => {
+    // body.error has only non-message fields and no top-level message — the parser
+    // falls through to the raw responseBody dump (last-resort behavior preserved).
+    const responseBody = JSON.stringify({ error: { code: "x", type: "y" } })
+    const result = ProviderError.parseAPICallError({
+      providerID: "openai" as any,
+      error: makeAPICallError({
+        message: "Bad Request",
+        statusCode: 400,
+        responseBody,
+      }),
+    })
+    expect(result.type).toBe("api_error")
+    if (result.type === "api_error") {
+      // Falls through to `${msg}: ${responseBody}` — preserves existing behavior.
+      expect(result.message).toContain("Bad Request")
+      expect(result.message).toContain(responseBody)
+    }
+  })
 })
