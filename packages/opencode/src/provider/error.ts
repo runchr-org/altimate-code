@@ -61,11 +61,21 @@ export namespace ProviderError {
 
       try {
         const body = JSON.parse(e.responseBody)
-        // try to extract common error message fields
-        const errMsg = body.message || body.error || body.error?.message
-        if (errMsg && typeof errMsg === "string") {
-          return `${msg}: ${errMsg}`
-        }
+        // altimate_change start — upstream_fix: OpenAI errors use {error: {message}} shape;
+        // the original `body.message || body.error || body.error?.message` short-circuits on
+        // the parent object, fails the typeof string guard, and dumps the raw body. Use an
+        // explicit-typeof ternary so a truthy non-string at any level can't block a valid
+        // string further down the chain (matches parseStreamError's pattern below).
+        const errMsg =
+          typeof body.error?.message === "string"
+            ? body.error.message
+            : typeof body.message === "string"
+              ? body.message
+              : typeof body.error === "string"
+                ? body.error
+                : undefined
+        if (errMsg) return `${msg}: ${errMsg}`
+        // altimate_change end
       } catch {}
 
       // If responseBody is HTML (e.g. from a gateway or proxy error page),
