@@ -6,6 +6,9 @@ import {
   postprocessQualify,
   registerAll,
 } from "../../src/altimate/native/altimate-core"
+// altimate_change start — connections module owns altimate_core.detect_join_candidates
+import { registerAll as registerAllConnections } from "../../src/altimate/native/connections/register"
+// altimate_change end
 
 // Disable telemetry via env var instead of mock.module
 beforeAll(() => { process.env.ALTIMATE_TELEMETRY_DISABLED = "true" })
@@ -13,6 +16,9 @@ afterAll(() => { delete process.env.ALTIMATE_TELEMETRY_DISABLED })
 
 // Import altimate-core registration (side-effect)
 import "../../src/altimate/native/altimate-core"
+// altimate_change start — load connections registrations so altimate_core.detect_join_candidates is present
+import "../../src/altimate/native/connections/register"
+// altimate_change end
 
 // ---------------------------------------------------------------------------
 // Schema Resolution
@@ -171,6 +177,9 @@ describe("Registration", () => {
   beforeAll(() => {
     // Re-register in case Dispatcher.reset() was called by another test file
     registerAll()
+    // altimate_change start — connections module hosts altimate_core.detect_join_candidates
+    registerAllConnections()
+    // altimate_change end
   })
 
   const ALL_METHODS = [
@@ -213,16 +222,16 @@ describe("Registration", () => {
     // altimate_change end
   ] as const
 
-  test("all 35 altimate_core methods are registered", () => {
+  test("all advertised altimate_core methods are registered", () => {
     const registered = Dispatcher.listNativeMethods()
     for (const method of ALL_METHODS) {
       expect(registered).toContain(method)
     }
-    // Verify exact count of altimate_core methods
+    // Count of registered altimate_core.* must match the advertised list.
     const coreCount = registered.filter((m) =>
       m.startsWith("altimate_core."),
     ).length
-    expect(coreCount).toBe(35)
+    expect(coreCount).toBe(ALL_METHODS.length)
   })
 
   test("hasNativeHandler returns true for all methods", () => {
