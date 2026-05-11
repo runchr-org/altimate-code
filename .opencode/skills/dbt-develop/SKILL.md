@@ -188,55 +188,6 @@ altimate-dbt build --model <name> --downstream             # rebuild downstream 
 ```
 Use `altimate-dbt children` and `altimate-dbt parents` to verify the DAG is intact when changes could affect downstream models.
 
-### 5. Pre-completion checklist — emit before declaring done
-
-Reading the patterns above is not enough; you must actively check each one
-against the SQL you just wrote. **In your final assistant message, before
-declaring the task done, emit the following checklist with each item
-explicitly marked `[x]` or `[ ]` and a one-line justification.** Skipping the
-checklist is the leading cause of "schema correct, values wrong" failures.
-
-```text
-Pre-completion checklist:
-- [ ] Every model named in the prompt or referenced `schema.yml` exists on
-      disk and appears in `altimate-dbt info`.
-- [ ] Every model passes `altimate-dbt build` cleanly (zero errors, no
-      pre-existing failures left unfixed).
-- [ ] For any model with `LEFT JOIN`, I asked "should output cardinality
-      match the LEFT side or the matched side?" and verified `COUNT(*)` /
-      `SUM` are computed on a column that's `NULL` for unmatched rows (or
-      converted to `INNER JOIN` if unmatched parents should be excluded).
-- [ ] For any model required to have one row per period (day / week / month),
-      a date-spine join (`dbt_utils.date_spine` or recursive CTE) is in
-      place, not `WHERE date IN (SELECT DISTINCT date FROM events)`.
-- [ ] For any window function followed by `LIMIT N` or `QUALIFY ... <= N`,
-      `ORDER BY` includes a deterministic tiebreaker (id or unique column),
-      not just the ranked metric.
-- [ ] For any `COALESCE`/`CASE`/`UNION` mixing types, every branch is
-      explicitly `CAST(... AS <T>)` to the same type.
-- [ ] For any string concatenation with `||` or `CONCAT`, NULL-able operands
-      are wrapped in `COALESCE(x, '<placeholder>')` or the call is switched
-      to `CONCAT_WS`.
-- [ ] For any model whose name or `schema.yml` test implies uniqueness
-      (`dim_*`, `unique` test, "one row per X"), dedup is enforced
-      (`DISTINCT`, `QUALIFY ROW_NUMBER() = 1`, or `GROUP BY` with explicit
-      aggregation).
-- [ ] For any incremental model, the high-water mark uses `>=`, the
-      `unique_key` is the genuine natural key, and `on_schema_change` is
-      set appropriately.
-- [ ] For any snapshot, `strategy` is explicit (`timestamp` only when
-      `updated_at` is monotonic; otherwise `check` with `check_cols`).
-- [ ] For any model that asks for v2 of an existing model, the
-      `_models.yml` has a `versions:` block with `defined_in:` — not a
-      sibling `_v2.sql` standalone file.
-- [ ] If the model has non-trivial transformation logic, I generated and
-      ran dbt unit tests via the `dbt-unit-tests` skill, and they pass.
-```
-
-A `[ ]` (unchecked) entry without a stated reason for skipping means the
-task is not done. If a row is genuinely not applicable, mark it `[x]` and
-write "n/a — <one-line reason>".
-
 ## Iron Rules
 
 1. **Never write SQL without reading the source columns first.** Use `altimate-dbt columns` or `altimate-dbt columns-source`.

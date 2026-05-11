@@ -8,8 +8,8 @@ Date: 2026-05-10. Model id: `openrouter/moonshotai/kimi-k2.6-20260420`. Harness:
 
 ## TL;DR
 
-- Headline: **61 / 75 = 81.3%** pass rate on ADE-Bench (reported clean run set).
-- Canonical aggregated re-tally over every per-trial directory on disk: **59 / 78 = 75.6%** when we keep the latest run for each trial that produced a `parser_results` block. Both numbers are honest — the higher one is the final clean run, the lower one includes a few earlier-attempt trials that we never re-ran.
+- Initial headline: **61 / 75 = 81.3%** pass rate on ADE-Bench. After a second wave of harness work (auto-load skill bodies via `applyPaths` frontmatter, placement reorder of the auto-loaded block) the best-of-runs number reached **64 / 75 = 85.3%**. The body of this post analyzes the 81.3% trace data; the second-wave work is described in the "What we tried" sections below.
+- Canonical aggregated re-tally over every per-trial directory on disk at the time of the first-wave analysis: **59 / 78 = 75.6%** when we keep the latest run for each trial that produced a `parser_results` block.
 - Average **36 tool calls per trial**, median 37, max 90.
 - Median runtime per trial **322 seconds**. Median cost **$0.12**. Total benchmark spend **~$14.91** for the whole 78-trial sweep.
 - Wall-clock breakdown: **~4.9% inside tools, ~89% inside model generation/reasoning, the rest dispatch overhead**. Kimi-K2.6 is overwhelmingly model-bound.
@@ -314,6 +314,36 @@ A few notes for calibrating against other agents:
 3. **dbt feature recall.** Versioned models, snapshots, certain `dbt_project.yml` materialization configs — Kimi's training cutoff vs. dbt's release cadence costs us here. Better in-context documentation snippets for these features would close the gap.
 
 None of this requires retraining Kimi. All of it is harness work.
+
+---
+
+## What we tried that didn't work
+
+Worth documenting for future maintainers so we don't re-discover the same dead ends.
+
+### Pre-completion self-check checklist (rolled back)
+
+We added a 12-item "emit this checklist with `[x]/[ ]` marks before declaring done" section to `dbt-develop`. Each item asked the agent to verify one of the dbt patterns (LEFT JOIN cardinality, date-spine completeness, window-rank tiebreaker, type harmonization, etc.) against its own output.
+
+**Result: measured negative.**
+
+- The checklist appeared in the agent's output on **6 of 14 still-failing trials** after the change.
+- **Zero of those 6 flipped to PASS.**
+- In multiple traces, the agent self-marked items `[x] LEFT JOIN cardinality correct` while the underlying SQL still had the exact phantom-row bug the item warned against.
+
+Diagnosis: the framing trained the model to perform verification theater rather than to actually re-read its SQL. The checklist became a closing ritual the model emitted to satisfy the directive, decoupled from any actual checking. We've seen the same failure mode discussed in literature on chain-of-thought "self-evaluation" — asking a model to grade its own work without an external verifier is unreliable.
+
+The mitigation a sub-agent suggested — move the checklist to a pre-`dbt build` phase instead of pre-completion — has more theoretical merit (the model would have to fail the build to skip it), but we didn't ship it because:
+1. The model already has `altimate-dbt build` failures looped into its tool-use cycle and still misses these patterns.
+2. Adding more prescriptive structure at every step risks crowding out the actual task context.
+
+We rolled the checklist back and kept the rest of the auto-load mechanism (placement reorder, `applyPaths` frontmatter). The two flips attributed earlier to "A+B" (`helixops_saas007`, `helixops_saas009`) trace back to the placement reorder; the checklist contributed nothing measurable.
+
+### What this implies for "always-on guardrail" patterns
+
+This benchmark run is one data point against the "give the model an exhaustive self-check list" approach to closing the last-mile correctness gap. For Kimi-K2.6 specifically, the agent reads the list, marks it complete, and moves on — without doing the underlying audit. **Hard verification (compile failures, test failures, lineage-tool errors) still works; soft verification (model promises it checked X) does not.**
+
+Worth re-trying with stronger models (Opus, GPT-4 tier) where the meta-cognition might be more reliable. Not worth shipping on Kimi-K2.6.
 
 ---
 
