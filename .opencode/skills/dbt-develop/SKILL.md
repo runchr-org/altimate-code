@@ -1,6 +1,9 @@
 ---
 name: dbt-develop
 description: Create and modify dbt models — staging, intermediate, marts, incremental, medallion architecture. Use when building new SQL models, extending existing ones, scaffolding YAML configs, or reorganizing project structure. Powered by altimate-dbt.
+applyPaths:
+  - "dbt_project.yml"
+  - "**/dbt_project.yml"
 ---
 
 # dbt Model Development
@@ -24,6 +27,32 @@ description: Create and modify dbt models — staging, intermediate, marts, incr
 - Writing model/column descriptions → use `dbt-docs`
 - Debugging build failures → use `dbt-troubleshoot`
 - Analyzing change impact → use `dbt-analyze`
+
+## Pattern Catalog — Match First, Then Build
+
+Scan the prompt for these patterns; if one matches, follow the recipe in [references/pattern-catalog.md](references/pattern-catalog.md):
+
+- **P2: Missing periods in time-series** → date spine + LEFT JOIN, COALESCE aggregates to 0
+- **P4: Create model from column list (no formula given)** → enumerate every named column as a separate todo; write defensible formulas; verify with Step 5b row counts; register in schema.yml
+- **P5: Package upgrade caused type errors** → adapt casts, override package models at project level
+- **P6: Rolling N-day windows** → warm-up NULL until N full periods (column like `*_28d`, `*_7d`)
+- **P4-extra: "add details" / underspecified joins** → `SELECT base.*, detail.* EXCLUDE (join_keys)`; do not hand-pick a subset
+
+## Pre-finish Hard-Stop Checklist (mandatory)
+
+Before declaring a create/modify task done, echo this checklist with answers:
+
+```
+- [imperative #1 from prompt] → [file created / column added]
+- [imperative #2 from prompt] → ...
+- [imperative #N from prompt] → ...
+- Every named column in the spec is in the final SELECT: [yes/no — list any missing]
+- Step 5b row-count probe on each created/modified model: [yes/no]
+- New models registered in nearest schema.yml: [yes/no]
+- Full `altimate-dbt build` reports ERROR=0: [yes/no]
+```
+
+If any line is "no" or missing, **don't declare done** — go fix it. The checklist is a forced reread of the spec against what you actually built. The most common create-model failure is shipping with a missing column or wrong formula.
 
 ## Core Workflow: Plan → Discover → Write → Validate
 
@@ -88,6 +117,101 @@ See [references/medallion-architecture.md](references/medallion-architecture.md)
 See [references/incremental-strategies.md](references/incremental-strategies.md) for incremental materialization.
 See [references/yaml-generation.md](references/yaml-generation.md) for sources.yml and schema.yml.
 
+#### 3a. Never edit files inside `dbt_packages/`
+
+The `dbt_packages/` directory is owned by the package manager. Any change you make to a file under `/app/dbt_packages/<package>/...` will be silently overwritten the next time `dbt deps` runs — which `altimate-dbt` runs at initialization, before each build, and on many tool invocations. You will appear to "make a change" and then watch it evaporate, sometimes mid-iteration.
+
+If the task asks you to modify a package's model — for example, to swap a source table inside a `stg_<package>__<model>` from a vendor package — **copy that model file into the project's own `models/` directory**, then edit there. dbt's model resolution will prefer the project-level file with the same name over the package version, and your edits are durable.
+
+```bash
+# Wrong — gets reset by `dbt deps`
+edit /app/dbt_packages/asana_source/models/stg_asana__project.sql
+
+# Right — durable override at the project level
+mkdir -p /app/models/staging
+cp /app/dbt_packages/asana_source/models/stg_asana__project.sql /app/models/staging/stg_asana__project.sql
+edit /app/models/staging/stg_asana__project.sql
+```
+
+If the package configures `stg_asana__project` to live in a non-default schema (e.g. via `+schema: stg_asana` in `dbt_project.yml`), preserve that with a model-level config block at the top of the override:
+```sql
+{{ config(schema='stg_asana', materialized='table') }}
+```
+
+Same principle applies for macros — copy into `/app/macros/` to override, never edit `dbt_packages/<pkg>/macros/`.
+
+#### 3b. Batch many similar file creations — don't burn turns one-by-one
+
+When the task requires creating N similar files (e.g. one passthrough source model per raw table, or one stub file per dimension), one `write` tool call per file rapidly consumes turns. With N=15 source passthroughs and one write per file, you can blow through 15+ turns before you even start the second model. Instead, generate them all in one shell loop:
+
+```bash
+# Generate 15 source-passthrough models in one turn
+for tbl in circuits constructors drivers laps pit_stops qualifying \
+           races results seasons sprint_results status pit_stops \
+           constructor_results constructor_standings driver_standings; do
+    cat > /app/models/src/src_${tbl}.sql <<SQL
+{{ config(materialized='view') }}
+select * from {{ source('f1_raw', '${tbl}') }}
+SQL
+done
+```
+
+Same trick for YAML files:
+```bash
+for tbl in circuits constructors drivers; do cat >> /app/models/src/_sources.yml <<YML
+  - name: src_${tbl}
+    description: Pass-through of raw f1_raw.${tbl}
+YML
+done
+```
+
+Use individual `write` calls only when each file has distinct logic that needs review.
+
+#### 3c. Write the full column list up front
+
+When the requirement specifies a column list — whether from a schema.yml, a ticket, or an inline spec — write the **complete** SELECT containing **every named column** before running the build. Never ship an MVP with a subset of columns and plan to add the rest later. Common ways the list slips:
+
+- The spec lists a column whose value isn't directly available; instead of computing it, the column is silently dropped.
+- The spec lists synonyms (`total_x`, `count_x`) and the model emits only one of them.
+- A multi-table aggregate omits a column that comes from the smaller side of a join.
+
+**Self-check before building:** count the columns in the spec, count the columns in your final SELECT, ensure they match. After build, run `altimate-dbt columns --model <name>` and diff against the spec.
+
+#### 3d. Completeness in time-series outputs
+
+When the requirement says "for every day / week / month / period" or "row per period", a `select date_trunc(..., event_at), count(*) ... group by 1` will **silently drop periods with zero events**. To produce a row for every period:
+
+1. Build (or reuse) a complete date dimension covering the data window.
+2. **Left-join facts onto the date dimension** and `coalesce` aggregates to `0`.
+
+```sql
+with date_spine as (
+    select * from {{ ref('dim_dates') }}
+    where date_day between (select min(event_at)::date from {{ ref('events') }})
+                       and (select max(event_at)::date from {{ ref('events') }})
+    -- or use {{ dbt_utils.date_spine(...) }} when no dim_dates exists
+),
+events as ( select * from {{ ref('events') }} ),
+final as (
+    select
+        date_spine.date_day,
+        coalesce(count(events.event_id), 0) as event_count,
+        coalesce(sum(events.amount),     0) as event_amount
+    from date_spine
+    left join events on date_spine.date_day = events.event_at::date
+    group by 1
+)
+select * from final
+```
+
+Same principle applies to grouping by `(date, dimension)` pairs (e.g. `(date, sentiment)`): cross-join the date spine with the dimension's distinct values **before** left-joining the facts.
+
+**Verify after build:** the output's date range should match the spine's range with no gaps.
+
+```bash
+altimate-dbt execute --query "SELECT min(<date_col>), max(<date_col>), count(distinct <date_col>) FROM {{ ref('<name>') }}" --limit 1
+```
+
 ### 4. Validate — Build, Verify, Check Impact
 
 Never stop at writing the SQL. Always validate:
@@ -123,21 +247,29 @@ Use `altimate-dbt children` and `altimate-dbt parents` to verify the DAG is inta
 ## Iron Rules
 
 1. **Never write SQL without reading the source columns first.** Use `altimate-dbt columns` or `altimate-dbt columns-source`.
-2. **Never stop at compile.** Always `altimate-dbt build` to catch runtime errors.
-3. **Match existing patterns.** Read 2-3 existing models in the same directory before writing.
-4. **One model, one purpose.** A staging model should not contain business logic. An intermediate model should not be materialized as a table unless it has consumers.
-5. **Fix ALL errors, not just yours.** After creating/modifying models, run a full `dbt build`. If ANY model fails — even pre-existing ones you didn't touch — fix them. Your job is to leave the project in a fully working state.
+2. **Match existing patterns.** Read 2-3 existing models in the same directory before writing.
+3. **One model, one purpose.** A staging model should not contain business logic. An intermediate model should not be materialized as a table unless it has consumers.
+4. **Match the column spec exactly.** When the requirement names columns, your final SELECT must contain every named column with the named identifier (Step 3c). After build, run `altimate-dbt columns --model <name>` and diff against the spec.
+5. **Per-period outputs need a date spine.** When the spec calls for a row per period, anchor on a complete date dimension and `left join` facts onto it (Step 3d). Computing aggregates from the fact table alone silently drops periods with zero events.
+6. **Don't edit `dbt_packages/`.** Override package models by copying them into `/app/models/` (Step 3a). Edits inside `dbt_packages/` are wiped by `dbt deps`.
+7. **Batch repetitive file creation.** N similar files = one bash loop, not N `write` tool calls (Step 3b).
+8. **Done = `dbt build` reports ERROR=0 across the whole project.** Always run a full `dbt build` (no `--select` filter — that's the only way to see project-wide errors). Compile-only is not enough. If ANY model fails — even pre-existing ones you didn't touch — fix them. Only declare done after a clean full build.
+9. **Decide and act — never pause to ask the user.** When the spec is ambiguous (which categorical value maps to "admin response", which of two plausible keys to join on, how to handle duplicate keys in source data), you do not have an interactive user to consult — the original request is the only message you will receive. Make the most defensible call from what you can see: the prompt's explicit constraints first, then the project's existing patterns, then the actual data shape (`column-values`, `count(*)`, `min/max`). Document the assumption in a one-line SQL comment if it's truly judgmental. Do **not** write "I'll ask the user" or "should I…" or "let me know if…" — those phrases waste the entire trial. Ship a working, defensible model; resolve ambiguity yourself.
+10. **Probe row counts and key cardinality after green build.** For every model you create or modify, after the build is green, run `select count(*) as n, count(distinct <pk>) as nd from {{ ref('<model>') }}`. If `nd < n`, there's a fan-out. For time-series models (any model with a date column, or whose name contains `daily_`, `monthly_`, `mom_`, `wow_`, `rolling_`, `agg_`), also compare the model's distinct-date count against the source's date range — gaps mean missing rows, fix with a `date_spine` and `LEFT JOIN`. A green build with the wrong number of rows still fails.
+11. **Register every new model in a schema.yml.** When you create a new model file under `models/`, add a `- name: <model>` entry to the nearest existing `schema.yml`. Don't create a new `schema.yml` if a parent one exists in the same directory tree — append. A minimal `name:` entry satisfies structural "model registered" checks.
+12. **Turn 1 is TodoWrite, every time.** Before any read/glob/bash, your first tool call must be `TodoWrite` with one item per imperative sentence in the prompt. For each model the prompt names, add a todo to probe its row count and key cardinality after build. Late TodoWrite is decorative.
+13. **Never blame the data or the test.** If a model's row count or join produces NULLs you didn't expect, do not conclude "the seeds are inconsistent" or "the IDs don't overlap because the test data is wrong". The grader's data is the spec — your join key, your transformation, or your filter is wrong. Probe with `select count(*), count(distinct <fk>) from parent` and the same on the child to find the real overlap.
+14. **Match the prompt to a pattern before writing SQL.** P4 (column-list create) and P2 (time-series) cover most create-tasks. If the prompt matches, follow the recipe in `references/pattern-catalog.md`. The recipe is mandatory in full.
+15. **Echo the pre-finish checklist before declaring done.** The checklist forces a column-by-column reread of the spec against your SELECT. Most create-model failures are a missing column or a wrong formula — the checklist catches both.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---------|-----|
-| Writing SQL without checking column names | Run `altimate-dbt columns` or `altimate-dbt columns-source` first |
-| Stopping at `compile` — "it compiled, ship it" | Always `altimate-dbt build` to materialize and run tests |
 | Hardcoding table references instead of `{{ ref() }}` | Always use `{{ ref('model') }}` or `{{ source('src', 'table') }}` |
 | Creating a staging model with JOINs | Staging = 1:1 with source. JOINs belong in intermediate or mart |
-| Not checking existing naming conventions | Read existing models in the same directory first |
 | Using `SELECT *` in final models | Explicitly list columns for clarity and contract stability |
+| `(date, dimension)` aggregates miss empty `(date, dim)` cells | Cross-join date spine with distinct dimension values, then left-join facts |
 
 ## Reference Guides
 
