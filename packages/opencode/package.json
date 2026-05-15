@@ -78,7 +78,7 @@
     "@ai-sdk/provider-utils": "3.0.21",
     "@ai-sdk/togetherai": "1.0.34",
     "@ai-sdk/vercel": "1.0.33",
-    "@ai-sdk/xai": "2.0.51",
+    "@ai-sdk/xai": "3.0.90",
     "@altimateai/altimate-core": "0.3.1",
     "@altimateai/drivers": "workspace:*",
     "@aws-sdk/credential-providers": "3.993.0",
