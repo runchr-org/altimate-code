@@ -16,9 +16,10 @@
  * NOTE: Requires a local build first: bun run build:local
  */
 import { describe, test, expect } from "bun:test"
-import { spawnSync } from "child_process"
+import { spawnSync, execFileSync } from "child_process"
 import path from "path"
 import fs from "fs"
+import os from "os"
 
 const PKG_DIR = path.resolve(import.meta.dir, "../..")
 const REPO_ROOT = path.resolve(PKG_DIR, "../..")
@@ -100,7 +101,13 @@ describe("compiled binary smoke test", () => {
     // node_modules. This is the regression guard for the v0.7.x curl-install
     // crash where altimate-core was marked `external` and the standalone
     // archive shipped without it.
+    //
+    // Hermeticity: cwd is the OS tmpdir so the binary cannot walk upward and
+    // discover the worktree's node_modules. Without this, Bun's compiled
+    // binary falls back to filesystem resolution from process.execPath and
+    // the test passes even if the staged-shim onResolve silently misses.
     const result = spawnSync(binary!, ["--version"], {
+      cwd: os.tmpdir(),
       encoding: "utf-8",
       timeout: 15_000,
       env: {
@@ -119,6 +126,40 @@ describe("compiled binary smoke test", () => {
     expect(result.status).toBe(0)
     const output = (result.stdout ?? "") + (result.stderr ?? "")
     expect(output).not.toContain("Cannot find module")
+  })
+
+  // Content-level assertion: independent of any runtime resolution path,
+  // require that the compiled binary contains exactly one altimate-core .node
+  // reference. If the staged-shim onResolve ever silently fails to redirect
+  // and Bun pulls in the upstream multi-platform loader, every platform's
+  // .node name leaks into bunfs and this test fires. Pairs with the
+  // hermetic --version test above.
+  runTest("binary embeds exactly one altimate-core .node", () => {
+    if (process.platform === "win32") {
+      // `strings` isn't available on a stock Windows runner. The other tests
+      // already exercise the runtime path; this content-level check covers
+      // Linux + macOS CI which is where the build matrix actually runs.
+      return
+    }
+    const stringsOut = execFileSync("strings", [binary!], {
+      encoding: "utf-8",
+      maxBuffer: 256 * 1024 * 1024,
+    })
+    // Strip the bunfs hash suffix Bun appends to embedded resources
+    // (e.g. "altimate-core.darwin-arm64-ptxrnv5e.node" → "altimate-core.darwin-arm64.node")
+    // so the require() string and the bunfs entry collapse to the same name.
+    // Bun uses an alphanumeric (not hex) hash of 7+ chars; real platform
+    // last-segments (arm64/x64/gnu/msvc) are all <=5 chars, so a length-bound
+    // of {6,} unambiguously matches the hash.
+    const refs = [...stringsOut.matchAll(/altimate-core\.(?:darwin|linux|win32)-[a-z0-9-]+\.node/g)]
+      .map((m) => m[0])
+      .map((r) => r.replace(/-[a-z0-9]{6,}(?=\.node$)/, ""))
+    const distinct = new Set(refs)
+    if (distinct.size !== 1) {
+      console.error("altimate-core .node references found in binary:", [...distinct])
+    }
+    expect(distinct.size).toBeGreaterThanOrEqual(1)
+    expect(distinct.size).toBe(1)
   })
 
   runTest("binary responds to --help", () => {

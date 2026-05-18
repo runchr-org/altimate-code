@@ -104,19 +104,22 @@ jobs:
       - name: Smoke test binary
         if: matrix.name == 'linux-x64'
         run: |
-          BINARY=$(find packages/opencode/dist -name altimate -type f | head -1)
+          # Resolve to an absolute path before we cd away from the workspace.
+          BINARY=$(find "$(pwd)/packages/opencode/dist" -name altimate -type f | head -1)
           if [ -z "$BINARY" ]; then
             echo "::error::No binary found in dist/"
             exit 1
           fi
           chmod +x "$BINARY"
 
-          # Run the binary with NO pre-set NODE_PATH. The Bun-compiled binary
-          # now embeds @altimateai/altimate-core's NAPI .node into bunfs, so
-          # it must start standalone. This is the regression gate for the
-          # v0.7.x curl-install crash (Cannot find module '@altimateai/altimate-core').
+          # Run with NO pre-set NODE_PATH AND from a directory with no
+          # node_modules anywhere upward. Bun's compiled binary would
+          # otherwise walk the workspace tree for node_modules and resolve
+          # altimate-core that way — the test would pass for the wrong
+          # reason if the staged shim ever silently misses.
+          cd "${RUNNER_TEMP:-/tmp}"
           env -u NODE_PATH "$BINARY" --version
-          echo "Smoke test passed: standalone binary starts without external NODE_PATH"
+          echo "Smoke test passed: standalone binary starts hermetically"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -256,14 +259,17 @@ jobs:
       # compile-time checks miss (e.g. missing NAPI externals like v0.5.10).
       - name: Pre-publish smoke test
         run: |
-          BINARY=$(find packages/opencode/dist -path '*altimate-code-linux-x64/bin/altimate' -type f | head -1)
+          # Resolve to an absolute path before we cd away from the workspace.
+          BINARY=$(find "$(pwd)/packages/opencode/dist" -path '*altimate-code-linux-x64/bin/altimate' -type f | head -1)
           if [ -z "$BINARY" ]; then
             echo "::error::No linux-x64 binary found in artifacts — cannot verify release"
             exit 1
           else
             chmod +x "$BINARY"
-            # No NODE_PATH — the binary embeds altimate-core itself.
-            # This is the gate that would have caught the v0.7.x missing-module bug.
+            # No NODE_PATH AND hermetic cwd: see the build-time smoke test
+            # comment for why this matters. The binary must start without
+            # walking the workspace for node_modules.
+            cd "${RUNNER_TEMP:-/tmp}"
             env -u NODE_PATH "$BINARY" --version
             echo "Pre-publish smoke test passed"
           fi
