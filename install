@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APP=altimate-code
+APP=altimate
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
@@ -22,7 +22,7 @@ Options:
 Examples:
     curl -fsSL https://altimate.ai/install | bash
     curl -fsSL https://altimate.ai/install | bash -s -- --version 1.0.180
-    ./install --binary /path/to/altimate-code
+    ./install --binary /path/to/altimate
 EOF
 }
 
@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-INSTALL_DIR=$HOME/.altimate-code/bin
+INSTALL_DIR=$HOME/.altimate/bin
 mkdir -p "$INSTALL_DIR"
 
 # If --binary is provided, skip all download/detection logic
@@ -121,10 +121,28 @@ else
       fi
 
       if command -v ldd >/dev/null 2>&1; then
-        if ldd --version 2>&1 | grep -qi musl; then
+        # ldd --version exits non-zero on musl by design. With `set -o pipefail`
+        # (line 2), a pipeline `ldd --version 2>&1 | grep -qi musl` would inherit
+        # ldd's failure and the if-block would never fire — defeating musl
+        # detection on every non-Alpine musl distro (Void, Adelie, custom builds).
+        # Capture output first, then grep.
+        ldd_out="$(ldd --version 2>&1 || true)"
+        if printf '%s' "$ldd_out" | grep -qi musl; then
           is_musl=true
         fi
       fi
+    fi
+
+    # @altimateai/altimate-core has no NAPI prebuild for musl. Without a
+    # musl-shaped archive, the install would 404 silently (without --fail
+    # curl writes the 404 HTML to disk, and tar then dies "not in gzip
+    # format"). Fail fast with an actionable message instead.
+    if [ "$is_musl" = "true" ]; then
+      echo -e "${RED}Alpine Linux (musl) is not currently supported by the standalone install.${NC}"
+      echo -e "${MUTED}altimate-core has no NAPI prebuild for musl yet. Workarounds:${NC}"
+      echo -e "  • apk add gcompat   ${MUTED}# run glibc binaries on Alpine${NC}"
+      echo -e "  • Use npm: npm install -g altimate-code"
+      exit 1
     fi
 
     needs_baseline=false
@@ -161,11 +179,14 @@ else
     if [ "$needs_baseline" = "true" ]; then
       target="$target-baseline"
     fi
-    if [ "$is_musl" = "true" ]; then
-      target="$target-musl"
-    fi
+    # is_musl=true would have exited above — no musl target suffix is constructed.
 
     filename="$APP-$target$archive_ext"
+    # Windows release archives ship altimate.exe, every other target ships altimate.
+    binary_name="$APP"
+    if [ "$os" = "windows" ]; then
+      binary_name="$APP.exe"
+    fi
 
 
     if [ "$os" = "linux" ]; then
@@ -219,11 +240,11 @@ print_message() {
 }
 
 check_version() {
-    if command -v altimate-code >/dev/null 2>&1; then
-        altimate_code_path=$(which altimate-code)
+    if command -v altimate >/dev/null 2>&1; then
+        altimate_path=$(which altimate)
 
         ## Check the installed version
-        installed_version=$(altimate-code --version 2>/dev/null || echo "")
+        installed_version=$(altimate --version 2>/dev/null || echo "")
 
         if [[ "$installed_version" != "$specific_version" ]]; then
             print_message info "${MUTED}Installed version: ${NC}$installed_version."
@@ -275,7 +296,7 @@ download_with_progress() {
     fi
 
     local tmp_dir=${TMPDIR:-/tmp}
-    local basename="${tmp_dir}/altimate_code_install_$$"
+    local basename="${tmp_dir}/altimate_install_$$"
     local tracefile="${basename}.trace"
 
     rm -f "$tracefile"
@@ -287,7 +308,9 @@ download_with_progress() {
     trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
 
     (
-        curl --trace-ascii "$tracefile" -s -L -o "$output" "$url"
+        # --fail so HTTP errors (e.g. 404 on an unknown target archive) become
+        # a non-zero exit instead of silently writing the error page to disk.
+        curl --fail --trace-ascii "$tracefile" -s -L -o "$output" "$url"
     ) &
     local curl_pid=$!
 
@@ -325,13 +348,14 @@ download_with_progress() {
 }
 
 download_and_install() {
-    print_message info "\n${MUTED}Installing ${NC}altimate-code ${MUTED}version: ${NC}$specific_version"
-    local tmp_dir="${TMPDIR:-/tmp}/altimate_code_install_$$"
+    print_message info "\n${MUTED}Installing ${NC}altimate ${MUTED}version: ${NC}$specific_version"
+    local tmp_dir="${TMPDIR:-/tmp}/altimate_install_$$"
     mkdir -p "$tmp_dir"
 
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
-        # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
-        curl -# -L -o "$tmp_dir/$filename" "$url"
+        # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails.
+        # --fail so 404s exit non-zero instead of writing the error page to $tmp_dir/$filename.
+        curl --fail -# -L -o "$tmp_dir/$filename" "$url"
     fi
 
     if [ "$os" = "linux" ]; then
@@ -340,15 +364,19 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/altimate-code" "$INSTALL_DIR"
-    chmod 755 "${INSTALL_DIR}/altimate-code"
+    mv "$tmp_dir/$binary_name" "${INSTALL_DIR}/$binary_name"
+    chmod 755 "${INSTALL_DIR}/$binary_name"
     rm -rf "$tmp_dir"
 }
 
 install_from_binary() {
-    print_message info "\n${MUTED}Installing ${NC}altimate-code ${MUTED}from: ${NC}$binary_path"
-    cp "$binary_path" "${INSTALL_DIR}/altimate-code"
-    chmod 755 "${INSTALL_DIR}/altimate-code"
+    # --binary may point to either altimate or altimate.exe; preserve the
+    # caller's basename so the installed file matches what was supplied.
+    local dest_name
+    dest_name=$(basename "$binary_path")
+    print_message info "\n${MUTED}Installing ${NC}$dest_name ${MUTED}from: ${NC}$binary_path"
+    cp "$binary_path" "${INSTALL_DIR}/$dest_name"
+    chmod 755 "${INSTALL_DIR}/$dest_name"
 }
 
 if [ -n "$binary_path" ]; then
@@ -366,9 +394,9 @@ add_to_path() {
     if grep -Fxq "$command" "$config_file"; then
         print_message info "Command already exists in $config_file, skipping write."
     elif [[ -w $config_file ]]; then
-        echo -e "\n# altimate-code" >> "$config_file"
+        echo -e "\n# altimate" >> "$config_file"
         echo "$command" >> "$config_file"
-        print_message info "${MUTED}Successfully added ${NC}altimate-code ${MUTED}to \$PATH in ${NC}$config_file"
+        print_message info "${MUTED}Successfully added ${NC}altimate ${MUTED}to \$PATH in ${NC}$config_file"
     else
         print_message warning "Manually add the directory to $config_file (or similar):"
         print_message info "  $command"
@@ -448,8 +476,8 @@ echo -e ""
 echo -e ""
 echo -e "${MUTED}To start:${NC}"
 echo -e ""
-echo -e "cd <project>       ${MUTED}# Open your project directory${NC}"
-echo -e "altimate-code      ${MUTED}# Launch the interactive TUI${NC}"
+echo -e "cd <project>  ${MUTED}# Open directory${NC}"
+echo -e "altimate      ${MUTED}# Run command${NC}"
 echo -e ""
 echo -e "${MUTED}For more information visit ${NC}https://altimate.ai"
 echo -e ""

@@ -91,16 +91,22 @@ describe("CLI Branding", () => {
 describe("Installation Script", () => {
   const installContent = readText(join(repoRoot, "install"))
 
-  test("APP variable is altimate-code", () => {
-    expect(installContent).toContain("APP=altimate-code")
+  test("APP variable is altimate", () => {
+    // APP is the standalone-archive prefix AND the installed binary name —
+    // matches the primary `altimate` npm bin, not the legacy `altimate-code`
+    // alias. The GitHub repo URL stays `AltimateAI/altimate-code` (covered by
+    // the next test) — only the binary name and archive prefix changed.
+    expect(installContent).toContain("APP=altimate")
+    expect(installContent).not.toContain("APP=altimate-code")
   })
 
   test("GitHub release URL references AltimateAI/altimate-code", () => {
     expect(installContent).toContain("github.com/AltimateAI/altimate-code/releases")
   })
 
-  test("install dir is .altimate-code", () => {
-    expect(installContent).toContain(".altimate-code/bin")
+  test("install dir is .altimate/bin", () => {
+    expect(installContent).toContain(".altimate/bin")
+    expect(installContent).not.toContain(".altimate-code/bin")
   })
 
   test("no references to opencode.ai domain", () => {
