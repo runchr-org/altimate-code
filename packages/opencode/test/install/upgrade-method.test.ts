@@ -97,6 +97,13 @@ describe("upgrade execution", () => {
     expect(INSTALLATION_SRC).not.toContain("https://altimate.ai/install")
   })
 
+  test("curl upgrade fetch has a bounded timeout", () => {
+    // Without a timeout the install-script fetch can stall indefinitely on a
+    // hung CDN/origin, blocking `altimate upgrade` forever. Use AbortSignal.timeout
+    // so the request fails fast with a clear error instead.
+    expect(INSTALLATION_SRC).toMatch(/AbortSignal\.timeout\(\s*15_000\s*\)/)
+  })
+
   test("VERSION normalization strips v prefix", () => {
     expect(INSTALLATION_SRC).toContain('OPENCODE_VERSION.trim().replace(/^v/, "")')
   })
