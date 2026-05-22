@@ -522,7 +522,8 @@ export interface SqlAutocompleteResult {
 // --- FinOps: Query History ---
 
 export interface QueryHistoryParams {
-  warehouse: string
+  /** Warehouse connection name. If omitted, the first compatible warehouse is auto-picked. */
+  warehouse?: string
   days?: number
   limit?: number
   user?: string
@@ -540,7 +541,8 @@ export interface QueryHistoryResult {
 // --- FinOps: Credit Analysis ---
 
 export interface CreditAnalysisParams {
-  warehouse: string
+  /** Warehouse connection name. If omitted, the first compatible warehouse is auto-picked. */
+  warehouse?: string
   days?: number
   limit?: number
   warehouse_filter?: string
@@ -559,7 +561,8 @@ export interface CreditAnalysisResult {
 // --- FinOps: Expensive Queries ---
 
 export interface ExpensiveQueriesParams {
-  warehouse: string
+  /** Warehouse connection name. If omitted, the first compatible warehouse is auto-picked. */
+  warehouse?: string
   days?: number
   limit?: number
 }

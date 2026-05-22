@@ -45,9 +45,14 @@ function formatQueryHistory(summary: Record<string, unknown>, queries: unknown[]
 
 export const FinopsQueryHistoryTool = Tool.define("finops_query_history", {
   description:
-    "Fetch recent query execution history from a warehouse. Shows query text, execution time, bytes scanned, and status. Snowflake: reads from QUERY_HISTORY. PostgreSQL: reads from pg_stat_statements.",
+    "Fetch recent query execution history from a warehouse. Shows query text, execution time, bytes scanned, and status. Snowflake: reads from QUERY_HISTORY. PostgreSQL: reads from pg_stat_statements. Also supports BigQuery, Databricks, ClickHouse.",
   parameters: z.object({
-    warehouse: z.string().describe("Warehouse connection name"),
+    warehouse: z
+      .string()
+      .optional()
+      .describe(
+        "Warehouse connection name. Optional — if omitted, the first configured compatible warehouse is used.",
+      ),
     days: z.number().optional().default(7).describe("How many days of history to fetch"),
     limit: z.number().optional().default(100).describe("Maximum number of queries to return"),
     user: z.string().optional().describe("Filter to a specific user (Snowflake only)"),

@@ -63,9 +63,14 @@ function formatCreditsAnalysis(
 
 export const FinopsAnalyzeCreditsTool = Tool.define("finops_analyze_credits", {
   description:
-    "Analyze Snowflake credit consumption — daily breakdown by warehouse, total credits, and cost optimization recommendations. Requires ACCOUNT_USAGE access.",
+    "Analyze Snowflake/BigQuery/Databricks credit consumption — daily breakdown by warehouse, total credits, and cost optimization recommendations. Requires ACCOUNT_USAGE (Snowflake) / INFORMATION_SCHEMA.JOBS (BigQuery) / system.billing.usage (Databricks) access.",
   parameters: z.object({
-    warehouse: z.string().describe("Warehouse connection name"),
+    warehouse: z
+      .string()
+      .optional()
+      .describe(
+        "Warehouse connection name. Optional — if omitted, the first configured Snowflake/BigQuery/Databricks warehouse is used.",
+      ),
     days: z.number().optional().default(30).describe("Days of history to analyze"),
     limit: z.number().optional().default(50).describe("Max daily records"),
     warehouse_filter: z.string().optional().describe("Filter to a specific Snowflake warehouse"),
