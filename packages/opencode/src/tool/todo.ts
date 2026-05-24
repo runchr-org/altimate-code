@@ -119,13 +119,21 @@ export const TodoWriteTool = Tool.define("todowrite", {
     const decision = recordTodoWriteCall(ctx.sessionID)
 
     if (decision.action === "refuse") {
-      Telemetry.track({
-        type: "doom_loop_detected",
-        timestamp: Date.now(),
-        session_id: ctx.sessionID,
-        tool_name: "todowrite",
-        repeat_count: decision.count,
-      })
+      // Fire telemetry ONLY on the transition into refusal (first call at
+      // the threshold), not on every subsequent refused call. Without this
+      // gate, a runaway agent that keeps hammering todowrite after refusal
+      // produces ~9,000+ doom_loop_detected events per session — pure
+      // telemetry noise. The transition fires once; subsequent refusals
+      // remain silent. Mirrors the `===` symmetry of the warn branch.
+      if (decision.count === TODOWRITE_REFUSE_THRESHOLD) {
+        Telemetry.track({
+          type: "doom_loop_detected",
+          timestamp: Date.now(),
+          session_id: ctx.sessionID,
+          tool_name: "todowrite",
+          repeat_count: decision.count,
+        })
+      }
       return {
         title: `todowrite blocked: ${decision.count} calls this session`,
         output:

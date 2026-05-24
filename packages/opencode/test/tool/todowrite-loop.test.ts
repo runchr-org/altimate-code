@@ -38,7 +38,9 @@ describe("recordTodoWriteCall: counter mechanics", () => {
     expect(_getTodoWriteCount("session-b")).toBe(1)
   })
 
-  test("counter survives reset and starts fresh", () => {
+  test("counter is cleared by _resetTodoWriteCounters and starts fresh", () => {
+    // Renamed from "counter survives reset" which was misleading — the
+    // reset clears the counter, it doesn't survive.
     recordTodoWriteCall("session-a")
     recordTodoWriteCall("session-a")
     expect(_getTodoWriteCount("session-a")).toBe(2)
