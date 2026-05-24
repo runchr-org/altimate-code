@@ -75,6 +75,23 @@ const TRACKING_PARAMS = new Set([
   "mibextid",
   "vero_conv",
   "vero_id",
+  // HubSpot
+  "_hsenc",
+  "_hsmi",
+  "hsCtaTracking",
+  // Marketo
+  "mkt_tok",
+  // Adobe Analytics / SiteCatalyst
+  "s_cid",
+  "s_kwcid",
+  // Piwik / Matomo
+  "pk_campaign",
+  "pk_kwd",
+  "pk_source",
+  "pk_medium",
+  "pk_content",
+  "piwik_campaign",
+  "piwik_keyword",
 ])
 
 function isTrackingParamPrefix(name: string): boolean {
@@ -90,6 +107,12 @@ export function normalizeUrlForCache(url: string): string {
   try {
     const parsed = new URL(url)
     parsed.hostname = parsed.hostname.toLowerCase()
+    // Strip userinfo (basic-auth `user:pass@`) — it doesn't change the
+    // resource the URL points to, and leaving it in lets the same logical
+    // URL with/without credentials occupy two cache slots. Also a minor
+    // hygiene win for cache keys that get logged in telemetry.
+    parsed.username = ""
+    parsed.password = ""
     const kept: [string, string][] = []
     for (const [k, v] of parsed.searchParams) {
       if (TRACKING_PARAMS.has(k) || isTrackingParamPrefix(k)) continue

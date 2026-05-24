@@ -152,6 +152,67 @@ describe("normalizeUrlForCache", () => {
     )
   })
 
+  test("strips userinfo (basic-auth user:pass@) from cache key", () => {
+    // Reviewer (2026-05-23): credentials in the URL don't change the
+    // resource the request hits, so they shouldn't fragment the cache.
+    // Also a hygiene win — telemetry never logs cache keys with creds.
+    expect(normalizeUrlForCache("https://user:pass@example.com/path")).toBe(
+      "https://example.com/path",
+    )
+    // Same logical URL with and without userinfo collapses to one key.
+    expect(normalizeUrlForCache("https://user@example.com/path")).toBe(
+      normalizeUrlForCache("https://example.com/path"),
+    )
+    expect(normalizeUrlForCache("https://user:pass@example.com/path?a=1")).toBe(
+      normalizeUrlForCache("https://example.com/path?a=1"),
+    )
+  })
+
+  test("strips HubSpot tracking params (_hsenc, _hsmi, hsCtaTracking)", () => {
+    expect(
+      normalizeUrlForCache(
+        "https://example.com/post?_hsenc=p2ANqtz-x&_hsmi=12345&hsCtaTracking=abc",
+      ),
+    ).toBe("https://example.com/post")
+  })
+
+  test("strips Marketo tracking param (mkt_tok)", () => {
+    expect(normalizeUrlForCache("https://example.com/page?mkt_tok=eyJhbGciOi")).toBe(
+      "https://example.com/page",
+    )
+  })
+
+  test("strips Adobe Analytics tracking params (s_cid, s_kwcid)", () => {
+    expect(
+      normalizeUrlForCache("https://example.com/page?s_cid=email&s_kwcid=AL!1234"),
+    ).toBe("https://example.com/page")
+  })
+
+  test("strips Piwik/Matomo tracking params (pk_*, piwik_*)", () => {
+    expect(
+      normalizeUrlForCache(
+        "https://example.com/page?pk_campaign=spring&pk_kwd=hello&pk_source=email&pk_medium=newsletter&pk_content=banner",
+      ),
+    ).toBe("https://example.com/page")
+    expect(
+      normalizeUrlForCache(
+        "https://example.com/page?piwik_campaign=summer&piwik_keyword=ai",
+      ),
+    ).toBe("https://example.com/page")
+  })
+
+  test("real-world: HubSpot/Marketo email link variations collapse to one cache key", () => {
+    const variations = [
+      "https://docs.example.com/guide?_hsenc=p2ANqtz1&_hsmi=42",
+      "https://docs.example.com/guide?mkt_tok=eyJhbGciOiJIUzI",
+      "https://docs.example.com/guide?utm_source=email&utm_medium=marketo",
+      "https://USER:PASS@docs.example.com/guide",
+    ]
+    const normalized = variations.map(normalizeUrlForCache)
+    expect(new Set(normalized).size).toBe(1)
+    expect(normalized[0]).toBe("https://docs.example.com/guide")
+  })
+
   test("duplicate-key params collapse to a stable order regardless of input order", () => {
     // Without value-aware sort, `?a=1&a=2` and `?a=2&a=1` would produce
     // different cache keys despite carrying the same logical content.
