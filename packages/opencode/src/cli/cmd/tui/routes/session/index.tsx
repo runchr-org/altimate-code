@@ -224,7 +224,13 @@ export function Session() {
     if (part.id === lastSwitch) return
 
     if (part.tool === "plan_exit") {
-      local.agent.set("build")
+      // altimate_change start — canonical "builder" agent name (renamed from "build")
+      // Previously wrote "build" here which then flowed into the next session.prompt
+      // request as `agent: "build"`, leaking the legacy name into telemetry. Even
+      // though prompt.ts now normalizes at the emit boundary, write the canonical
+      // value at the source so debugging dumps / inspection see consistent state.
+      local.agent.set("builder")
+      // altimate_change end
       lastSwitch = part.id
     } else if (part.tool === "plan_enter") {
       local.agent.set("plan")

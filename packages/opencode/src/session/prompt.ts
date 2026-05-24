@@ -73,6 +73,26 @@ const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested struc
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
 
+  // altimate_change start — single source of truth for legacy agent-name normalization
+  //
+  // The "build" agent was renamed to "builder" but some persisted sessions and
+  // the plan-exit synthetic message historically wrote `agent: "build"`. Agent.get()
+  // applies an alias so execution still works, but every telemetry event with an
+  // `agent` field needs to project to the canonical name or dashboards see a
+  // phantom "build" bucket alongside "builder". This helper is the single place
+  // that normalization lives — used by both session_start and agent_outcome
+  // emits below so they can never drift. Future telemetry events with an `agent`
+  // field should route through this helper too.
+  function normalizeAgentName(name: string | undefined): string {
+    // Case-insensitive guard: a future config, custom prompt, or hand-edited
+    // persisted session could surface "Build" or "BUILD" and the phantom
+    // bucket would come back. One toLowerCase() costs nothing and pins the
+    // contract regardless of caller hygiene.
+    if (!name || name.toLowerCase() === "build") return "builder"
+    return name
+  }
+  // altimate_change end
+
   const state = Instance.state(
     () => {
       const data: Record<
@@ -830,13 +850,17 @@ export namespace SessionPrompt {
           messageID: lastUser.id,
         })
         // altimate_change start — session start telemetry
+        // Agent name routed through normalizeAgentName so session_start and the
+        // downstream agent_outcome event always agree on the canonical bucket
+        // (funnel analysis from start → outcome would otherwise drop legacy
+        // "build" sessions). See the helper at the top of this namespace.
         Telemetry.track({
           type: "session_start",
           timestamp: Date.now(),
           session_id: sessionID,
           model_id: model.id,
           provider_id: model.providerID,
-          agent: lastUser.agent,
+          agent: normalizeAgentName(lastUser.agent),
           project_id: Instance.project?.id ?? "",
           os: process.platform,
           arch: process.arch,
@@ -1150,7 +1174,11 @@ export namespace SessionPrompt {
       type: "agent_outcome",
       timestamp: Date.now(),
       session_id: sessionID,
-      agent: sessionAgentName,
+      // altimate_change start — route through normalizeAgentName (shared with
+      // session_start above) so the two events always agree on the bucket name.
+      // See the helper at the top of this namespace for the legacy-name policy.
+      agent: normalizeAgentName(sessionAgentName),
+      // altimate_change end
       tool_calls: toolCallCount,
       generations: step,
       duration_ms: Date.now() - sessionStartTime,

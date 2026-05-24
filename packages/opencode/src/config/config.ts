@@ -1139,9 +1139,11 @@ export namespace Config {
       default_agent: z
         .string()
         .optional()
+        // altimate_change start — fallback name reflects the renamed "builder" agent
         .describe(
-          "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
+          "Default agent to use when none is specified. Must be a primary agent. Falls back to 'builder' if not set or if the specified agent is invalid.",
         ),
+      // altimate_change end
       username: z
         .string()
         .optional()
