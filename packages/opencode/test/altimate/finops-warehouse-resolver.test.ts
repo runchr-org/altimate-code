@@ -46,6 +46,29 @@ describe("resolveFinopsWarehouse", () => {
     }
   })
 
+  test("trims leading/trailing whitespace on the requested name before matching", () => {
+    // LLMs occasionally surface warehouse names with stray whitespace from
+    // prompt copy-paste or YAML/JSON serialization edge cases. Without the
+    // trim, "  prod_sf  " is reported as unknown even though "prod_sf" is
+    // configured. Pin the contract so a refactor can't silently drop the
+    // trim.
+    Registry.setConfigs({
+      prod_sf: { type: "snowflake", account: "x", user: "u", password: "p" } as any,
+    })
+
+    for (const requested of ["  prod_sf", "prod_sf  ", "  prod_sf  ", "\tprod_sf\n"]) {
+      const result = resolveFinopsWarehouse({
+        requested,
+        supportedTypes: CREDIT_SUPPORTED,
+        operationName: "Credit analysis",
+      })
+      expect(result.kind).toBe("ok")
+      if (result.kind === "ok") {
+        expect(result.warehouse).toBe("prod_sf")
+      }
+    }
+  })
+
   test("auto-picks the first compatible warehouse when none is requested", () => {
     Registry.setConfigs({
       dev_pg: { type: "postgres", host: "localhost" } as any,

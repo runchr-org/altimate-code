@@ -57,7 +57,13 @@ export function resolveFinopsWarehouse(opts: ResolveOptions): FinopsWarehouseRes
   }
 
   if (requested && requested.trim() !== "") {
-    const match = all.find((w) => w.name === requested)
+    // Trim before matching — LLMs occasionally surface warehouse names with
+    // stray whitespace from prompt copy-paste or YAML/JSON serialization
+    // edge cases. Without this, `" prod_wh"` reports as unknown even though
+    // the configured warehouse is `"prod_wh"`. The trim is on the lookup
+    // key only; configured names are stored as-is.
+    const requestedTrimmed = requested.trim()
+    const match = all.find((w) => w.name === requestedTrimmed)
     if (!match) {
       // Error messages enumerate configured warehouse names so the LLM can
       // self-correct. This is intentional — names are already accessible via
