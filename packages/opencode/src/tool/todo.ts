@@ -37,22 +37,23 @@ export const TODOWRITE_REFUSE_THRESHOLD = 50
 // and `recordTodoWriteCall` has no awaits before the guard flips, so two
 // concurrent first-calls cannot both enter the subscribe block.
 //
-// Failure handling: if `Bus.subscribe` throws (Bus not yet initialized in
-// some test contexts), we still flip `_subscribed = true` to avoid retrying
-// every call. The counter remains correct for the in-memory case — only the
-// daemon-mode auto-cleanup is lost, and the explicit `clearTodoWriteCounter`
-// escape hatch remains available. This is a deliberate trade-off: silent
-// retry every call would noisily re-throw on every todowrite invocation.
+// Failure handling: `_subscribed` flips to true ONLY after a successful
+// `Bus.subscribe`. If subscribe throws (e.g. Bus not yet initialized in
+// a test context), `_subscribed` stays false so the next todowrite call
+// retries. Bus.subscribe is synchronous + the handler set is idempotent
+// per identity, so racy first-calls won't double-subscribe.
 let _subscribed = false
 function ensureSessionDeletedSubscription(): void {
   if (_subscribed) return
-  _subscribed = true
   try {
     Bus.subscribe(Session.Event.Deleted, (evt) => {
       todoWriteCallsBySession.delete(evt.properties.info.id)
     })
+    _subscribed = true
   } catch {
-    // See comment above — subscription is best-effort, no retry by design.
+    // Bus may not be initialized yet (some test contexts). Leave
+    // _subscribed=false so the next todowrite call retries the subscribe.
+    // The counter still works correctly for the in-memory case meanwhile.
   }
 }
 
