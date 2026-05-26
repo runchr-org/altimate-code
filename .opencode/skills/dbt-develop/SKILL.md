@@ -166,28 +166,35 @@ ls models/                                                   # confirm every req
 altimate-dbt info                                            # confirm every requested model is in the project
 ```
 
-**Diff column shape against the spec.** For each model the task asked for,
-get the actual column header and compare against the spec (whatever the task
-references — `schema.yml`, `_models.yml`, an inline column list in the
-prompt). Same column count, same order, same names — not "close enough."
+**Diff column shape against the spec — mandatory.** For each model the task
+asked for, run:
 
 ```bash
-altimate-dbt columns --model <name>                          # if altimate-dbt is available
-# or: dbt show --select <name> --limit 0                     # plain dbt fallback — produces the header row
+altimate-dbt schema-verify --model <name>
 ```
 
-Compare against the spec as ordered lists and explicitly enumerate:
+This command compares the model's actual produced columns against the
+`schema.yml` spec (the same spec the equality tests grade against) and
+returns a structured diff:
 
-- `columns_extra`: in your model, NOT in the spec — REMOVE them
+- `verdict`: `match` (done) | `mismatch` (must fix) | `no-spec` (no spec to verify against)
+- `columns_extra`: in your model, NOT in the spec — REMOVE them from the `SELECT`
 - `columns_missing`: in the spec, NOT in your model — ADD them
-- `columns_reordered`: in both but at different positions — REORDER your `SELECT`
+- `columns_reordered`: in both but at different positions — REORDER the `SELECT`
+- `type_mismatches`: same name, different declared types — CAST or change the source
 
-If any of those three lists is non-empty, the model is **not done**. Fix the
-model SQL to match the spec — do not reinterpret the spec, do not assume
-extra columns will be tolerated, do not assume column order is cosmetic.
-Many automatic equality tests check the column tuple exactly: `(name, type,
-position)`. The model contract is what the spec says, not what you think
-would be more useful.
+If `verdict` is `mismatch`, the model is **not done**. Read the diff, fix
+the model SQL to match the spec, rebuild, and re-run `schema-verify` until
+the verdict is `match` (or `no-spec`). Do not reinterpret the spec, do not
+assume extra columns will be tolerated, do not assume column order is
+cosmetic. Many automatic equality tests check the column tuple exactly:
+`(name, type, position)`. The model contract is what the spec says, not
+what you think would be more useful.
+
+If `altimate-dbt` is unavailable, fall back to manual diff: read
+`target/manifest.json` for the spec (`nodes.<model>.columns`), run `dbt
+show --select <name> --limit 0` for the actual header, and compare the two
+ordered lists by hand.
 
 **Verify the output:**
 ```bash
@@ -220,7 +227,7 @@ Use `altimate-dbt children` and `altimate-dbt parents` to verify the DAG is inta
 5. **Fix ALL errors, not just yours.** After creating/modifying models, run a full `dbt build`. If ANY model fails — even pre-existing ones you didn't touch — fix them. Your job is to leave the project in a fully working state.
 6. **Verify transformation correctness, not just mechanics.** For non-trivial models, generate and run dbt unit tests as part of the validate step (use the `dbt-unit-tests` skill). Passing `dbt build` only proves the SQL is syntactically valid — it doesn't prove the *values* are right.
 7. **Enumerate deliverables, then check them off.** The task is not done until every model, column, test, and config change explicitly requested exists on disk and in the manifest. Re-read the prompt at the end and verify each requested item — don't trust your own intermediate "done" feeling.
-8. **Match the column spec exactly — same names, same types, same order, no extras.** If the task references a `schema.yml`, `_models.yml`, or an explicit column list, the new model's column tuple must match the spec verbatim. Adding "helpful" extras (rank breakdowns, name-resolved fields, lineage metadata), reordering columns "more logically", or substituting synonyms (`supplier_id` for `supplier_company`, `transaction_type_name` for `transaction_type`) all break equality tests. The contract is what the spec says, not what you think would be useful. If you genuinely believe a column should be there and the spec disagrees, the spec wins.
+8. **Match the column spec exactly — and verify it mechanically, not by inspection.** If the task references a `schema.yml`, `_models.yml`, or an explicit column list, the new model's column tuple must match the spec verbatim — same names, same types, same order, no extras. Adding "helpful" extras (rank breakdowns, name-resolved fields, lineage metadata), reordering columns "more logically", or substituting synonyms (`supplier_id` for `supplier_company`, `transaction_type_name` for `transaction_type`) all break equality tests. **Before declaring done, run `altimate-dbt schema-verify --model <name>` and treat any `mismatch` verdict as "not done."** The contract is what the spec says, not what you think would be useful. If you genuinely believe a column should be there and the spec disagrees, the spec wins.
 
 ## Common Pitfalls in Transformation Logic
 
