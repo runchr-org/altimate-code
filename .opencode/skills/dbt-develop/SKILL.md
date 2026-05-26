@@ -342,7 +342,7 @@ have a unique key — fix that first.
 | Creating a staging model with JOINs | Staging = 1:1 with source. JOINs belong in intermediate or mart |
 | Not checking existing naming conventions | Read existing models in the same directory first |
 | Using `SELECT *` in final models | Explicitly list columns for clarity and contract stability |
-| `COUNT(*)` over a `LEFT JOIN` — counts unmatched parent rows as if they had one child (e.g. a `dim_listings LEFT JOIN fct_reviews` with no matching reviews still yields one row, so `COUNT(*) = 1` instead of `0`) | Use `COUNT(<child_key>)` or `COUNT(CASE WHEN <child_key> IS NOT NULL THEN 1 END)`. If you intended to exclude unmatched parents, switch to `INNER JOIN`. Same trap applies to `SUM`, `AVG`, etc. when the unmatched side contributes a "ghost" `NULL` row |
+| `COUNT(*)` over a `LEFT JOIN` — counts unmatched parent rows as if they had one child (e.g. a `dim_parent LEFT JOIN fct_child` with no matching children still yields one row, so `COUNT(*) = 1` instead of `0`) | Use `COUNT(<child_key>)` or `COUNT(CASE WHEN <child_key> IS NOT NULL THEN 1 END)`. If you intended to exclude unmatched parents, switch to `INNER JOIN`. Same trap applies to `SUM`, `AVG`, etc. when the unmatched side contributes a "ghost" `NULL` row |
 
 ## Reference Guides
 
