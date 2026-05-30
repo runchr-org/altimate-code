@@ -284,6 +284,7 @@ export namespace ProviderTransform {
     if (
       (model.providerID === "anthropic" ||
         model.providerID === "google-vertex-anthropic" ||
+        model.providerID === "altimate-backend" ||
         model.api.id.includes("anthropic") ||
         model.api.id.includes("claude") ||
         model.id.includes("anthropic") ||
