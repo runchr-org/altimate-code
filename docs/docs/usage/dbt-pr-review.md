@@ -10,6 +10,19 @@ a model's opinion:
 - **PII classification** — columns that newly expose sensitive data
 - **A–F grade + anti-patterns** — readability, correctness, warehouse-cost issues
 
+!!! warning "The bot posts a COMMENT review — never a formal GitHub *Approve*"
+    `APPROVE` is the **semantic** verdict shown in the comment body ("✅ Approved
+    — no findings"). On GitHub the bot always posts a **COMMENT** review event,
+    **never** a formal *Approve*: a review bot must not be able to satisfy branch
+    protection / required reviews and let a PR merge without human sign-off.
+    `REQUEST_CHANGES` posts a blocking review in `gate` mode (softened to a
+    comment in `comment` mode).
+
+    **To block merges, gate on the verdict _check_ (`--mode gate`), not on
+    requiring this bot as a reviewer.** If your branch protection previously
+    *required the altimate bot's review approval*, remove that requirement — the
+    bot no longer issues one, so those merges would otherwise stay blocked.
+
 On top of that deterministic core, an **LLM reviewer** adds the contextual
 judgment a static analyzer cannot — intent vs. the PR description, misleading
 names, business-logic risk, and test coverage for the change — as **advisory**
@@ -116,6 +129,13 @@ Options:
 
 Add the review to any repo with a workflow that compiles the project, then runs
 the review action:
+
+!!! danger "Run on `pull_request`, not `pull_request_target`"
+    The bot derives the target PR from the Actions event payload. Trigger it on
+    `pull_request` so fork PRs run with a **read-only** token. Do **not** use
+    `pull_request_target` with a checkout of the PR head — that hands a write-
+    scoped token to untrusted PR code (and to the PR's dbt Jinja/macros at
+    compile time).
 
 ```yaml
 name: dbt PR Review
