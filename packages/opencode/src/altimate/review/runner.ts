@@ -470,12 +470,13 @@ export function createDispatcherRunner(opts: DispatcherRunnerOptions): ReviewRun
       }
     },
 
-    async equivalence(oldSql: string, newSql: string): Promise<EquivalenceResult> {
+    async equivalence(oldSql: string, newSql: string, dialect?: string): Promise<EquivalenceResult> {
       try {
         const schema = await resolveSchema()
         const res = await Dispatcher.call("altimate_core.equivalence", {
           sql1: oldSql,
           sql2: newSql,
+          dialect,
           schema_context: schema,
         })
         const data = (res.data ?? {}) as Record<string, any>

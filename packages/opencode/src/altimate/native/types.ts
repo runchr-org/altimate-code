@@ -879,6 +879,7 @@ export interface AltimateCoreTestgenParams {
 export interface AltimateCoreEquivalenceParams {
   sql1: string
   sql2: string
+  dialect?: string
   schema_path?: string
   schema_context?: Record<string, any>
 }
