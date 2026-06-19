@@ -1,5 +1,5 @@
 import path from "path"
-import { modify, applyEdits, parseTree, findNodeAtLocation, getNodeValue } from "jsonc-parser"
+import { modify, applyEdits, parse, parseTree, findNodeAtLocation, getNodeValue, type ParseError } from "jsonc-parser"
 import { Filesystem } from "../util/filesystem"
 import type { Config } from "../config/config"
 
@@ -39,11 +39,16 @@ export async function addMcpToConfig(name: string, mcpConfig: Config.Mcp, config
   }
 
   // Guard: refuse to overwrite a config whose JSON/JSONC we cannot parse.
-  // jsonc-parser's modify() is error-tolerant and would best-effort clobber a
-  // recoverable file; the read helpers (removeMcpFromConfig/listMcpInConfig)
-  // already bail on a parse failure, so mirror that on the write path.
-  if (text.trim() && !parseTree(text)) {
-    throw new Error(`Refusing to write MCP config: ${configPath} is not valid JSON/JSONC`)
+  // jsonc-parser's modify() (and parseTree()) are error-tolerant and would
+  // best-effort clobber a recoverable file, so use parse() with an error sink —
+  // comments and trailing commas are allowed (it is JSONC), but a genuinely
+  // malformed/truncated file produces errors and we bail instead of overwriting.
+  if (text.trim()) {
+    const parseErrors: ParseError[] = []
+    parse(text, parseErrors, { allowTrailingComma: true })
+    if (parseErrors.length > 0) {
+      throw new Error(`Refusing to write MCP config: ${configPath} is not valid JSON/JSONC`)
+    }
   }
 
   const edits = modify(text, ["mcp", name], mcpConfig, {

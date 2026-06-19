@@ -81,24 +81,24 @@ describe("PR893: addMcpToConfig writes updatedAt and round-trips through strict 
 
 // ── Gap 2: malformed JSONC does not silently lose recoverable config ─────────
 describe("PR893: addMcpToConfig on a malformed JSONC file — clobbering contract", () => {
-  test("broken (partial-tree) JSON: existing key text is preserved and new entry added", async () => {
+  test("broken (truncated) JSON: addMcpToConfig refuses and leaves the file unchanged", async () => {
     await using tmp = await tmpdir()
     const configPath = path.join(tmp.path, "altimate-code.json")
-    // Truncated/broken JSON. jsonc-parser still produces a partial tree for this
-    // (parseTree returns a truthy node), so addMcpToConfig does NOT bail.
+    // Truncated/broken JSON. parseTree() is error-tolerant (returns a partial
+    // node), but the v0.8.8 parse-guard uses parse() with an error sink, so a
+    // genuinely malformed file is REFUSED rather than best-effort clobbered.
     const brokenText = `{ "mcp": { "a": `
     await writeFile(configPath, brokenText)
 
-    await addMcpToConfig("b", { type: "remote", url: "http://y" } as any, configPath)
+    await expect(addMcpToConfig("b", { type: "remote", url: "http://y" } as any, configPath)).rejects.toThrow(
+      /not valid JSON/i,
+    )
 
+    // CONTRACT (v0.8.8): no data loss — the original file is left byte-for-byte
+    // unchanged, and the new entry was NOT half-written into an unparseable file.
     const after = await readFile(configPath, "utf-8")
-    // CONTRACT (current, conscious): the original entry "a" is NOT silently
-    // dropped — its key text survives in the file — and the new entry "b" is
-    // appended. The file is left unparseable because the source was unparseable;
-    // addMcpToConfig is a text-edit, not a sanitizer.
-    expect(after).toContain('"a"')
-    expect(after).toContain('"b"')
-    expect(after).toContain("http://y")
+    expect(after).toBe(brokenText)
+    expect(after).not.toContain("http://y")
   })
 
   test("asymmetry: list/remove bail when parseTree returns undefined (severe garbage)", async () => {
